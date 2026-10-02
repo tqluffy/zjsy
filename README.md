@@ -44,7 +44,31 @@
 
 开发服务器由 Wrangler 提供。修改 src 后重新运行 npm run build 即可更新静态文件。npm run check 检查 JavaScript 语法。
 
-## 部署及源码同步
+## 自动部署：Cloudflare 直接连接 GitHub
+
+网站已通过 Wrangler 首次部署。连接 Cloudflare Workers Builds 后，每次推送或在 GitHub 网页编辑 main 分支，Cloudflare 会自动拉取源码、构建并部署到现有的 zjsy.zhtianqi.cn，无需手动运行本机 Wrangler。
+
+在 Cloudflare 控制台中打开现有的 zjsy Worker，选择 **Settings → Builds → Connect**，授权 Cloudflare Workers & Pages GitHub App 访问 tqluffy/zjsy，然后配置：
+
+| 设置 | 值 |
+| --- | --- |
+| GitHub 仓库 | tqluffy/zjsy |
+| 生产分支 | main |
+| 根目录 | / |
+| 构建命令 | npm run check && npm run build |
+| 部署命令 | npx wrangler@4.145.0 deploy |
+| 构建 API token | 由 Cloudflare 控制台创建和管理 |
+| 非生产分支构建 | 可关闭 |
+
+Cloudflare 的云端构建环境使用固定版本的 Wrangler，本机仍使用已安装的全局 Wrangler。云端自动部署不要使用 npm run deploy：该脚本用于本机发布，会先向 GitHub 推送提交。
+
+连接后推送一次提交，确认 Cloudflare 的构建与部署均成功，再检查网站 /build.json 的 revision 与 GitHub main 的最新提交一致。构建失败时线上保持上一个成功版本；不要把“推送已完成”当成“部署已完成”。
+
+构建脚本支持 Cloudflare 注入的 WORKERS_CI_COMMIT_SHA，同时校验它与 Git checkout 一致。每次自动构建仍会把完整提交号写入网页和 build.json，便于确认源码与部署对应。
+
+官方说明：[连接已有 Worker](https://developers.cloudflare.com/workers/ci-cd/builds/#connect-an-existing-worker)、[构建设置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)。
+
+## 本机手动发布
 
 配置位于 wrangler.jsonc，采用 Cloudflare Workers 静态资源与自定义域名。自部署时修改 account_id、name 和 routes。首次部署需要相应域名所属 Cloudflare 账号的权限。
 
@@ -62,7 +86,7 @@ npm run deploy 依次执行：
 
 网站页脚链接到对应源码提交，/build.json 可用于核对线上版本。GitHub 推送成功但 Cloudflare 部署失败时，脚本会报错；解决部署问题后重新执行 npm run deploy 即可。该流程不向 GitHub 保存 Cloudflare 的 OAuth 凭据，也不会在未提交或未推送的代码上部署。
 
-维护者应通过 npm run deploy 发布。单独推送 GitHub 不会自动改变线上网站；直接调用 wrangler deploy 会绕过源码同步检查。fork 仓库需修改 scripts/release.mjs 中的目标仓库校验。
+本机手动发布可通过 npm run deploy 完成。启用 Workers Builds 后，日常更新只需提交并推送 main，Cloudflare 自动部署；npm run deploy 保留作手动发布选项。首次连接前，单独推送 GitHub 不会改变线上网站。直接调用 wrangler deploy 会绕过本机源码同步检查。fork 仓库需修改 scripts/release.mjs 中的目标仓库校验。
 
 ### WSL 无浏览器授权
 
