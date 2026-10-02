@@ -270,6 +270,7 @@ for (const button of document.querySelectorAll('[data-style]')) button.addEventL
 });
 $('reset-settings').addEventListener('click', () => {
   form.reset();
+  if (matchMedia('(pointer: coarse)').matches) $('export-size').value = '2048';
   defaultExpiry();
   seed = randomSeed();
   document.querySelector('[data-style="balanced"]').click();
@@ -397,4 +398,5 @@ window.addEventListener('pagehide', () => {
 defaultExpiry();
 if (matchMedia('(pointer: coarse)').matches) $('export-size').value = '2048';
 syncControls();
-new ResizeObserver(() => schedulePreview()).observe($('drop-zone'));
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => schedulePreview()).observe($('drop-zone'));
+else window.addEventListener('resize', schedulePreview, { passive: true });
