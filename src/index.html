@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7fb">
+  <meta name="description" content="免费、开源的证件照片水印工具。照片仅在浏览器内存中处理，支持用途声明、有效期、随机水印、白边与骑缝水印。">
+  <title>证件水印 · 让每一次提供都有边界</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="证件水印首页"><img src="/favicon.svg" width="34" height="34" alt=""><span>证件水印<span class="brand-en">ZJSY</span></span></a>
+    <nav aria-label="网站导航"><a href="#privacy">隐私说明</a><a class="source-link" href="https://github.com/tqluffy/zjsy" target="_blank" rel="noopener noreferrer">GitHub 开源 <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main class="page">
+    <section class="intro">
+      <div><p class="eyebrow"><span class="live-dot"></span> LOCAL FIRST · 照片始终在你手中</p><h1>给证件照片，<br class="mobile-break">加一道用途边界<span class="accent">。</span></h1><p class="intro-copy">写明用途和有效期，让每一次提供都更安心。</p></div>
+      <div class="privacy-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><span><strong>本地处理，放心使用</strong><small>不上传照片 · 不保存信息 · 无追踪</small></span></div>
+    </section>
+    <div class="steps" aria-label="使用步骤"><span><b>01</b> 选择本地照片</span><span class="step-line"></span><span><b>02</b> 编辑水印</span><span class="step-line"></span><span><b>03</b> 下载保护后的照片</span></div>
+    <div class="workbench">
+      <section class="preview-panel" aria-labelledby="preview-title">
+        <div class="panel-header"><div><h2 id="preview-title">照片预览 <span id="demo-badge" class="small-badge" hidden>合成示例</span></h2><p id="image-info">一张照片，一份明确的用途声明</p></div><button id="clear-image" class="text-button" type="button" hidden>清除照片</button></div>
+        <input id="file-input" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="选择本地照片">
+        <div id="drop-zone" class="preview-stage">
+          <div id="empty-state" class="empty-state">
+            <div class="upload-illustration" aria-hidden="true"><span class="illus-card back-card"></span><span class="illus-card front-card"><span class="illus-person"></span><span class="illus-lines"><i></i><i></i><i></i></span><span class="illus-shield">✓</span></span></div>
+            <h3>选择你要保护的照片</h3><p>拖入文件，或直接粘贴截图</p>
+            <button id="choose-image" class="button primary" type="button"><span aria-hidden="true">＋</span> 选择本地照片</button>
+            <span class="file-hint">JPG / PNG / WebP / AVIF · 最大 30 MB</span>
+            <button id="load-demo" class="demo-button" type="button">先用合成示例试一试 <span aria-hidden="true">→</span></button>
+          </div>
+          <canvas id="preview-canvas" aria-label="添加水印后的照片预览" hidden></canvas>
+          <div id="drop-overlay" class="drop-overlay" hidden>松开鼠标，在本地打开照片</div>
+        </div>
+        <div id="preview-toolbar" class="preview-toolbar" hidden><span id="output-size"></span><div><button id="replace-image" class="text-button" type="button">更换照片</button><button id="compare" class="button compare-button" type="button">按住对比</button></div></div>
+        <div class="preview-note"><span class="lock-symbol" aria-hidden="true">▣</span><span>照片和输入只存在于当前页面内存，刷新或清除后释放。</span></div>
+        <div class="tips-card"><span class="tip-mark" aria-hidden="true">i</span><div><strong>清晰表达用途，也保留证件可读性</strong><p>建议让水印覆盖照片主体，避开关键信息的浓重遮挡。下载前以原始尺寸检查文字、人像及二维码是否清晰。</p></div></div>
+      </section>
+      <aside class="settings-panel" aria-label="水印设置">
+        <form id="settings" autocomplete="off">
+          <div class="panel-header settings-header"><h2>水印设置</h2><button id="reset-settings" class="text-button" type="button">恢复默认</button></div>
+          <section class="setting-section">
+            <div class="section-title"><span class="section-number">01</span><h3>用途声明</h3></div>
+            <label class="field-label" for="purpose">水印文字 <span>必填</span></label>
+            <textarea id="purpose" name="purpose" rows="2" maxlength="100" required spellcheck="false">仅限办理指定业务使用</textarea>
+            <div class="purpose-presets" aria-label="常用用途"><button type="button" data-purpose="仅限实名认证使用">实名认证</button><button type="button" data-purpose="仅限入职登记使用">入职登记</button><button type="button" data-purpose="仅限租房备案使用">租房备案</button></div>
+            <div class="field-row"><div><label class="field-label" for="expiry">有效期至 <span>可选</span></label><input id="expiry" name="expiry" type="date"></div><div><label class="field-label" for="signature">签名 <span>可选</span></label><input id="signature" name="signature" type="text" maxlength="32" placeholder="姓名或自定义标记" spellcheck="false"></div></div>
+            <p id="expiry-warning" class="field-warning" hidden>所选有效期已过，请确认是否符合用途。</p>
+          </section>
+          <section class="setting-section">
+            <div class="section-title"><span class="section-number">02</span><h3>水印样式</h3></div>
+            <div class="style-presets" aria-label="样式预设"><button type="button" data-style="balanced" class="selected" aria-pressed="true">均衡 <span>推荐</span></button><button type="button" data-style="light" aria-pressed="false">轻量</button><button type="button" data-style="strong" aria-pressed="false">醒目</button></div>
+            <div class="range-field"><label for="opacity">不透明度</label><output for="opacity" id="opacity-value"></output><input id="opacity" name="opacity" type="range" min="5" max="70" value="20"><div class="range-endpoints"><span>轻盈</span><span>明显</span></div></div>
+            <div class="range-field"><label for="density">密度</label><output for="density" id="density-value"></output><input id="density" name="density" type="range" min="1" max="10" value="5"></div>
+            <div class="field-row"><div class="range-field"><label for="font-size">文字大小</label><output for="font-size" id="font-size-value"></output><input id="font-size" name="fontSize" type="range" min="1.5" max="6" step="0.1" value="2.8"></div><div class="range-field"><label for="angle">倾斜角度</label><output for="angle" id="angle-value"></output><input id="angle" name="angle" type="range" min="-80" max="80" step="1" value="-28"></div></div>
+            <div class="field-row"><div><label class="field-label" for="font">字体风格</label><select id="font" name="font"><option value="sans">简洁黑体</option><option value="serif">经典宋体</option><option value="mono">等宽字体</option></select></div><div><label class="field-label" for="color">水印颜色</label><div class="color-control"><input id="color" name="color" type="color" value="#475569"><output id="color-value" for="color">#475569</output></div></div></div>
+            <label class="check-label"><input id="outline" name="outline" type="checkbox" checked><span>细描边，提高复杂背景上的可读性</span></label>
+            <details class="advanced-settings"><summary>偏移与随机扰动 <span aria-hidden="true">＋</span></summary>
+              <div class="field-row"><div class="range-field"><label for="offset-x">水平偏移</label><output for="offset-x" id="offset-x-value"></output><input id="offset-x" name="offsetX" type="range" min="-200" max="200" value="0"></div><div class="range-field"><label for="offset-y">垂直偏移</label><output for="offset-y" id="offset-y-value"></output><input id="offset-y" name="offsetY" type="range" min="-200" max="200" value="0"></div></div>
+              <div class="range-field"><label for="jitter">随机位置波动</label><output for="jitter" id="jitter-value"></output><input id="jitter" name="jitter" type="range" min="0" max="16" value="4"></div>
+              <div class="random-row"><p>每组文字有独立的位置、角度与深浅变化。数值按原图像素计算。</p><button id="reseed" class="button secondary" type="button">重新随机</button></div>
+              <p class="micro-copy">随机扰动增加规则匹配移除的难度，无法保证水印不会被去除。</p>
+            </details>
+          </section>
+          <section class="setting-section border-section">
+            <div class="toggle-title"><div class="section-title"><span class="section-number">03</span><h3>白边与骑缝</h3></div><label class="switch"><input id="border" name="border" type="checkbox" role="switch" aria-label="启用白边模式"><span></span></label></div>
+            <p class="section-copy">在原图外增加白边，上方明显标注用途、有效期和签名。</p>
+            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
+          </section>
+          <section class="export-section">
+            <div class="export-heading"><h3>准备好了，就带走吧</h3><span>保留原始像素</span></div>
+            <div class="export-options"><label class="visually-hidden" for="format">导出格式</label><select id="format" name="format"><option value="png">PNG · 无损</option><option value="jpeg">JPG · 体积更小</option></select><div id="quality-control" hidden><label for="quality">质量</label><input id="quality" name="quality" type="number" min="70" max="100" value="95" inputmode="numeric"><span>%</span></div></div>
+            <button id="download" class="button primary download-button" type="submit" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></svg><span>下载加水印照片</span></button>
+            <p class="export-hint">在本地生成文件 · 不携带原照片 EXIF 信息</p>
+          </section>
+        </form>
+      </aside>
+    </div>
+    <section class="how-it-works" id="privacy" aria-labelledby="privacy-title">
+      <div class="privacy-intro"><p class="eyebrow">PRIVACY BY DESIGN</p><h2 id="privacy-title">隐私，从处理方式开始。</h2><p>所有照片处理都在你的设备上完成。</p></div>
+      <div class="privacy-grid"><article><span class="privacy-icon" aria-hidden="true">↳</span><h3>照片不离开浏览器</h3><p>读取、绘制、预览、导出都在本地完成，没有照片上传接口或远程处理服务。</p></article><article><span class="privacy-icon" aria-hidden="true">◷</span><h3>刷新即清除</h3><p>不使用 Cookie、浏览器存储或数据库保存照片与设置。清除照片即可释放图像资源。</p></article><article><span class="privacy-icon" aria-hidden="true">&lt;/&gt;</span><h3>每一行代码都可查</h3><p>源码公开，无分析脚本或外部字体。网站版本对应 GitHub 提交，欢迎检查与自部署。</p></article></div>
+    </section>
+    <details class="faq"><summary>水印能提供怎样的保护？</summary><p>水印用于明确用途并增加被误用或随意复用的成本，不能保证防止盗用或 AI 去水印。接收方可能对水印、白边和二维码有要求，请在提交前确认。不要依赖水印代替必要的信息遮盖与接收方核验。</p></details>
+  </main>
+  <footer class="site-footer"><span>证件水印 · 让每一次提供都有边界</span><a id="version-link" href="https://github.com/tqluffy/zjsy/tree/__BUILD_REVISION__" target="_blank" rel="noopener noreferrer">开源版本 __BUILD_SHORT__ <span aria-hidden="true">↗</span></a></footer>
+  <div id="status" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><div class="noscript">本地照片处理需要 JavaScript，请启用后使用。</div></noscript>
+</body>
+</html>
