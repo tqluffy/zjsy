@@ -16,8 +16,7 @@ if (ciRevision) {
 if (process.env.WORKERS_CI && revision === 'development') throw new Error('Production builds require a source commit SHA.');
 await rm(new URL('../dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
-// Copy contents without preserving Unix file modes. Windows/WSL mounts may
-// allow writing files while rejecting chmod performed by fs.cp/copyFile.
+// Copy file contents without imposing source file permissions.
 async function copyContents(source, destination) {
   await mkdir(destination, { recursive: true });
   for (const entry of await readdir(source, { withFileTypes: true })) {
@@ -28,7 +27,16 @@ async function copyContents(source, destination) {
   }
 }
 await copyContents(new URL('../src/', import.meta.url), new URL('../dist/', import.meta.url));
-const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8');
-await writeFile(new URL('../dist/index.html', import.meta.url), html.replaceAll('__BUILD_REVISION__', revision).replaceAll('__BUILD_SHORT__', revision.slice(0, 7)));
-await writeFile(new URL('../dist/build.json', import.meta.url), JSON.stringify({ revision, repository: 'https://github.com/tqluffy/zjsy', version: '1.0.0' }, null, 2) + '\n');
+async function stampHtml(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
+    if (entry.isDirectory()) await stampHtml(path);
+    else if (entry.name.endsWith('.html')) {
+      const html = await readFile(path, 'utf8');
+      await writeFile(path, html.replaceAll('__BUILD_REVISION__', revision).replaceAll('__BUILD_SHORT__', revision.slice(0, 7)));
+    }
+  }
+}
+await stampHtml(new URL('../dist/', import.meta.url));
+await writeFile(new URL('../dist/build.json', import.meta.url), JSON.stringify({ revision, repository: 'https://github.com/tqluffy/zjsy', version: '1.1.0' }, null, 2) + '\n');
 console.log(`Built static assets from ${revision}. No runtime dependencies.`);

@@ -1,4 +1,5 @@
-// This module only draws into local canvases. It has no network or storage APIs.
+import { footerLayout, drawProofPlaceholder } from './proof.js';
+// Drawing remains local. Signing is requested separately by the export flow.
 const FONTS = {
   sans: '"PingFang SC","Microsoft YaHei",sans-serif',
   serif: '"Songti SC","SimSun",serif',
@@ -20,11 +21,18 @@ function randomGenerator(seed) {
 }
 
 export function getLayout(image, settings) {
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
+  const originalWidth = image.naturalWidth || image.width;
+  const originalHeight = image.naturalHeight || image.height;
+  const sourceScale = settings.exportMax ? Math.min(1, settings.exportMax / Math.max(originalWidth, originalHeight)) : 1;
+  const width = Math.max(1, Math.round(originalWidth * sourceScale));
+  const height = Math.max(1, Math.round(originalHeight * sourceScale));
   const side = settings.border ? Math.round(Math.min(width, height) * settings.borderSize / 100) : 0;
   const top = settings.border ? side + Math.round(Math.min(width, height) * 0.19) : 0;
-  return { width: width + side * 2, height: height + side + top, imageX: side, imageY: top, imageWidth: width, imageHeight: height, side, top };
+  const proof = settings.border && settings.verification;
+  const fullWidth = proof ? Math.max(640, width + side * 2) : width + side * 2;
+  const bodyHeight = height + side + top;
+  const fullHeight = proof ? footerLayout(fullWidth, bodyHeight, settings).height : bodyHeight;
+  return { width: fullWidth, height: fullHeight, bodyHeight, imageX: Math.round((fullWidth - width) / 2), imageY: top, imageWidth: width, imageHeight: height, side, top, sourceScale };
 }
 
 function wrapText(context, text, maxWidth) {
@@ -176,7 +184,7 @@ export function render(canvas, image, settings, seed, { scale = 1, compare = fal
   const layout = getLayout(image, settings);
   canvas.width = Math.max(1, Math.round(layout.width * scale));
   canvas.height = Math.max(1, Math.round(layout.height * scale));
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d', { colorSpace: 'srgb' });
   if (!context) throw new Error('浏览器未能创建绘图画布，请更换浏览器。');
   context.setTransform(scale, 0, 0, scale, 0, 0);
   context.imageSmoothingEnabled = true;
@@ -185,10 +193,12 @@ export function render(canvas, image, settings, seed, { scale = 1, compare = fal
   context.fillRect(0, 0, layout.width, layout.height);
   context.drawImage(image, layout.imageX, layout.imageY, layout.imageWidth, layout.imageHeight);
   if (!compare) {
-    drawTiles(context, layout, settings, seed);
+    const pixels = { ...settings, offsetX: settings.offsetX * layout.sourceScale, offsetY: settings.offsetY * layout.sourceScale, jitter: settings.jitter * layout.sourceScale };
+    drawTiles(context, layout, pixels, seed);
     if (settings.border) {
       drawBorderHeader(context, layout, settings);
       if (settings.seam) drawSeams(context, layout, settings, seed);
+      if (settings.verification) drawProofPlaceholder(context, layout, settings);
     }
   }
   return layout;

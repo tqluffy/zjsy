@@ -1,4 +1,5 @@
 import { createDemo, getLayout, randomSeed, render } from './render.js';
+import { addProof } from './proof.js';
 
 const $ = (id) => document.getElementById(id);
 const form = $('settings');
@@ -22,6 +23,7 @@ let loadVersion = 0;
 let pendingFrame = 0;
 let statusTimer;
 let dragDepth = 0;
+let previewTimer;
 
 function localDate(date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
@@ -65,6 +67,8 @@ function readSettings() {
     border: $('border').checked,
     borderSize: Number(data.get('borderSize')),
     seam: $('seam').checked,
+    verification: $('border').checked && $('verification').checked,
+    exportMax: Number($('export-size').value),
   };
 }
 
@@ -75,6 +79,7 @@ function syncControls() {
   ]) $(id + '-value').textContent = $(id).value + unit;
   $('color-value').textContent = $('color').value.toUpperCase();
   $('border-settings').hidden = !$('border').checked;
+  $('verification-note').hidden = !$('border').checked || !$('verification').checked;
   $('quality-control').hidden = $('format').value !== 'jpeg';
   $('quality').disabled = $('format').value !== 'jpeg';
   $('expiry-warning').hidden = !$('expiry').value || $('expiry').value >= localDate(new Date());
@@ -95,7 +100,12 @@ function updatePreview() {
     const settings = readSettings();
     const layout = getLayout(source, settings);
     checkOutput(layout);
-    const scale = Math.min(1, 1600 / Math.max(layout.width, layout.height), Math.sqrt(2_500_000 / (layout.width * layout.height)));
+    const stage = $('drop-zone');
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const density = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+    const availableWidth = Math.max(200, stage.clientWidth - (coarse ? 28 : 48));
+    const availableHeight = Math.max(180, window.innerHeight * 0.6);
+    const scale = Math.min(1, availableWidth * density / layout.width, availableHeight * density / layout.height, Math.sqrt((coarse ? 900_000 : 2_500_000) / (layout.width * layout.height)));
     const display = { ...settings, purpose: settings.purpose || '请填写用途声明' };
     render(preview, source, display, seed, { scale, compare: comparing });
     $('output-size').textContent = '导出 ' + layout.width + ' × ' + layout.height + ' px' + (scale < 1 ? ' · 预览已缩放' : '');
@@ -107,7 +117,10 @@ function updatePreview() {
 
 function schedulePreview() {
   syncControls();
-  if (!pendingFrame) pendingFrame = requestAnimationFrame(updatePreview);
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    if (!pendingFrame && !busy) pendingFrame = requestAnimationFrame(updatePreview);
+  }, matchMedia('(pointer: coarse)').matches ? 55 : 16);
 }
 
 function closeSource(image) {
@@ -343,7 +356,11 @@ form.addEventListener('submit', async (event) => {
     // Let the busy label paint before the full-resolution synchronous draw.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (exportVersion !== loadVersion) return;
-    render(canvas, exportSource, settings, exportSeed);
+    const layout = render(canvas, exportSource, settings, exportSeed);
+    if (settings.verification) {
+      buttonLabel.textContent = '正在生成本站验证凭据…';
+      await addProof(canvas, layout, settings);
+    }
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob((result) => result ? resolve(result) : reject(new Error('无法生成文件，请尝试 JPG 或缩小照片。')), 'image/' + format, quality);
     });
@@ -378,4 +395,6 @@ window.addEventListener('pagehide', () => {
   objectUrls.clear();
 });
 defaultExpiry();
+if (matchMedia('(pointer: coarse)').matches) $('export-size').value = '2048';
 syncControls();
+new ResizeObserver(() => schedulePreview()).observe($('drop-zone'));

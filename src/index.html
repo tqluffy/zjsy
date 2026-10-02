@@ -13,7 +13,7 @@
 <body>
   <header class="site-header">
     <a class="brand" href="/" aria-label="证件水印首页"><img src="/favicon.ico" width="34" height="34" alt=""><span>证件水印<span class="brand-en">ZJSY</span></span></a>
-    <nav aria-label="网站导航"><a href="#privacy">隐私说明</a><a class="source-link" href="https://github.com/tqluffy/zjsy" target="_blank" rel="noopener noreferrer">GitHub 开源 <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="网站导航"><a href="/verify/">验证照片</a><a href="#privacy">隐私说明</a><a class="source-link" href="https://github.com/tqluffy/zjsy" target="_blank" rel="noopener noreferrer">GitHub 开源 <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main class="page">
     <section class="intro">
@@ -69,10 +69,11 @@
           <section class="setting-section border-section">
             <div class="toggle-title"><div class="section-title"><span class="section-number">03</span><h3>白边与骑缝</h3></div><label class="switch"><input id="border" name="border" type="checkbox" role="switch" aria-label="启用白边模式"><span></span></label></div>
             <p class="section-copy">在原图外增加白边，上方明显标注用途、有效期和签名。</p>
-            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
+            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><label class="check-label"><input id="verification" name="verification" type="checkbox"><span>本站来源验证 · 主体隐写与二维码</span></label><p id="verification-note" class="proof-note" hidden>二维码包含已签名的用途、有效期和署名。仅向本站提交摘要获取签名，不发送照片或这些原始信息。下方会增加验证白边；主体最多改变蓝色最低一个色阶。PNG 适合严格核对，JPG 会进入压缩近似核对。签名不证明证件内容真实。</p><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
           </section>
           <section class="export-section">
-            <div class="export-heading"><h3>准备好了，就带走吧</h3><span>保留原始像素</span></div>
+            <div class="export-heading"><h3>准备好了，就带走吧</h3><span>尺寸由你选择</span></div>
+            <label class="field-label" for="export-size">导出尺寸</label><select id="export-size" name="exportSize"><option value="0">保留原始像素</option><option value="4096">原图最大长边 4096 px</option><option value="2048">原图最大长边 2048 px · 手机推荐</option><option value="1280">原图最大长边 1280 px</option></select>
             <div class="export-options"><label class="visually-hidden" for="format">导出格式</label><select id="format" name="format"><option value="png">PNG · 无损</option><option value="jpeg">JPG · 体积更小</option></select><div id="quality-control" hidden><label for="quality">质量</label><input id="quality" name="quality" type="number" min="70" max="100" value="95" inputmode="numeric"><span>%</span></div></div>
             <button id="download" class="button primary download-button" type="submit" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></svg><span>下载加水印照片</span></button>
             <p class="export-hint">在本地生成文件 · 不携带原照片 EXIF 信息</p>

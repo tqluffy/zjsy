@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7fb">
+  <meta name="description" content="在浏览器本地核对证件水印的本站签名、用途声明和图像内容，不上传验证照片。">
+  <title>验证照片 · 证件水印</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/verify/verify.js"></script>
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="/"><img src="/favicon.ico" width="34" height="34" alt=""><span>证件水印<span class="brand-en">ZJSY</span></span></a><nav aria-label="网站导航"><a href="/">制作水印</a><a class="source-link" href="https://github.com/tqluffy/zjsy" target="_blank" rel="noopener noreferrer">GitHub 开源 ↗</a></nav></header>
+  <main class="page verify-page">
+    <section class="intro"><div><p class="eyebrow">LOCAL VERIFICATION · 完全本地核对</p><h1>核对本站签名与图像。</h1><p class="intro-copy">照片不上传。二维码的信息与图像内容一起验证。</p></div></section>
+    <section id="credential-card" class="credential-card" hidden aria-labelledby="credential-title">
+      <p class="eyebrow">SIGNED INFORMATION</p><h2 id="credential-title">二维码中的用途声明</h2>
+      <dl class="credential-fields"><div><dt>用途</dt><dd id="claim-purpose"></dd></div><div><dt>有效期至</dt><dd id="claim-expiry"></dd></div><div><dt>署名</dt><dd id="claim-signature"></dd></div><div><dt>本站签发时间</dt><dd id="claim-issued"></dd></div></dl>
+      <p id="claim-state" class="micro-copy"></p>
+    </section>
+    <section class="verify-upload" aria-label="选择待核对照片">
+      <input id="verify-input" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="选择本地验证图像">
+      <h2>选择完整的水印照片</h2><p>包含主体、白边和二维码。可选择文件，也可拖入或粘贴图像。</p>
+      <button id="verify-choose" class="button primary" type="button">选择本地照片并核对</button>
+      <button id="verify-clear" class="button secondary" type="button" hidden>清除图像与结果</button>
+      <p id="verify-file-name" class="micro-copy"></p><img id="verify-preview" alt="所选择的待验证图像" hidden>
+    </section>
+    <section id="verify-result" class="verify-result" role="status" aria-live="polite" hidden><h2 id="result-title"></h2><p id="result-detail"></p><p id="result-carriers" class="micro-copy"></p></section>
+    <details class="faq" open><summary>结果应该如何理解？</summary><p>“内容校验一致”表示本站签名有效，图像主体、可见水印和白边声明与签名时一致（隐写占用的蓝色最低位除外）。“压缩后近似”仅表示宏观图像近似，不能排除细节修改，不会作为严格验证通过。无凭据、签名错误、内容不符或隐写无法恢复都会单独说明。</p><p>签名不证明证件本身真实，也不核验署名者身份。本站签名服务公开，凭据证明服务签发了该摘要，不保证调用者使用了未经修改的网页。裁剪、严重压缩、改变比例或拍摄屏幕可能导致无法核对。</p></details>
+    <p class="verify-privacy">二维码明文包含用途、有效期和署名。网址片段仅在本地解析，不发送给服务器；扫码设备可能记录二维码网址。核对照片不会触发任何数据请求。</p>
+  </main>
+  <footer class="site-footer"><span>证件水印 · 本地核对，照片不上传</span><a href="https://github.com/tqluffy/zjsy/tree/__BUILD_REVISION__" target="_blank" rel="noopener noreferrer">开源版本 __BUILD_SHORT__ ↗</a></footer>
+  <noscript><div class="noscript">本地验证需要 JavaScript，请启用后使用。</div></noscript>
+</body>
+</html>

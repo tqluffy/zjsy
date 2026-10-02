@@ -1,6 +1,6 @@
 {
   "name": "zjsy",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "完全在浏览器内存中处理照片的证件水印工具",
@@ -8,7 +8,7 @@
     "build": "node scripts/build.mjs",
     "dev": "npm run build && wrangler dev",
     "deploy": "node scripts/release.mjs",
-    "check": "node --check src/app.js && node --check src/render.js && node --check scripts/build.mjs && node --check scripts/release.mjs"
+    "check": "node scripts/check.mjs"
   },
   "engines": { "node": ">=22" }
 }
