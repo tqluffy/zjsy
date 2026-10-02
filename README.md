@@ -64,6 +64,15 @@ Cloudflare 的云端构建环境使用固定版本的 Wrangler，本机仍使用
 
 连接后推送一次提交，确认 Cloudflare 的构建与部署均成功，再检查网站 /build.json 的 revision 与 GitHub main 的最新提交一致。构建失败时线上保持上一个成功版本；不要把“推送已完成”当成“部署已完成”。
 
+日常修改的发布流程：
+
+    npm run check
+    git add src README.md scripts
+    git commit -m "Describe the change"
+    git push origin main
+
+推送后在 GitHub 提交的 Checks 或 Cloudflare 的 Builds 页面查看结果。只有构建与部署成功、线上 /build.json 更新到该提交，才表示同步完成。
+
 构建脚本支持 Cloudflare 注入的 WORKERS_CI_COMMIT_SHA，同时校验它与 Git checkout 一致。每次自动构建仍会把完整提交号写入网页和 build.json，便于确认源码与部署对应。
 
 官方说明：[连接已有 Worker](https://developers.cloudflare.com/workers/ci-cd/builds/#connect-an-existing-worker)、[构建设置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)。
