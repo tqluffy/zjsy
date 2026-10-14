@@ -8,11 +8,13 @@ let operation = 0;
 const initialUrl = location.href;
 if (location.hash) history.replaceState(null, '', location.pathname);
 
-function result(state, title, detail) {
+function result(state, title, detail, confidence = null) {
   $('verify-result').hidden = false;
   $('verify-result').className = 'verify-result ' + state;
   $('result-title').textContent = title;
   $('result-detail').textContent = detail;
+  $('result-confidence').hidden = !Number.isInteger(confidence);
+  if (Number.isInteger(confidence)) $('result-confidence').textContent = `主体匹配置信度：${confidence}%（定位与感知特征分值，不是真实性概率）`;
 }
 
 async function showCredential(packet) {
@@ -102,7 +104,7 @@ async function load(file) {
       : verified.state === 'tolerant'
         ? '图像主体在轻微失真容差内匹配'
         : '图像主体核对未通过';
-    result(verified.state, title, verified.reason);
+    result(verified.state, title, verified.reason, verified.confidence);
   } catch (error) {
     if (version === operation) result('invalid', '无法完成核对', error.message || '请使用包含完整白边和二维码的图像重试。');
   } finally {

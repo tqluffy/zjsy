@@ -28,7 +28,7 @@
       <button id="verify-clear" class="button secondary" type="button" hidden>清除图像与结果</button>
       <p id="verify-file-name" class="micro-copy"></p><img id="verify-preview" alt="所选择的待验证图像" hidden>
     </section>
-    <section id="verify-result" class="verify-result" role="status" aria-live="polite" hidden><h2 id="result-title"></h2><p id="result-detail"></p></section>
+    <section id="verify-result" class="verify-result" role="status" aria-live="polite" hidden><h2 id="result-title"></h2><p id="result-detail"></p><p id="result-confidence" class="confidence-score" hidden></p></section>
     <details class="faq" open><summary>结果应该如何理解？</summary><p>扫描二维码会核验二维码中水印文字的摘要和本站数字签名，不需要图像。选择图像后，页面先确认四角定位块，再对定位块围出的原始主体区域计算感知指纹。轻微压缩失真可在容差内匹配；明显修改、裁切、定位块缺失或非等比变形会核对失败。容差匹配不代表每个像素完全相同。</p><p>签名不证明证件本身真实，也不核验署名者身份。签名服务公开，任何人都可以请求它签署摘要；签名只说明对应摘要由服务签出，不证明调用者使用了未经修改的网页。</p></details>
     <p class="verify-privacy">二维码明文包含水印文字、摘要、签名和公开的密钥 ID。二维码数据位于网址片段，不会随网页请求发送给服务器；扫码软件可能记录二维码网址。选择图像和核验过程都在本地完成。</p>
   </main>

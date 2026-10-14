@@ -420,7 +420,15 @@ function locateImageRect(canvas, image, scaleX, scaleY) {
   const imageBottom = Math.round((leftBottom.y + rightBottom.y) / 2) + size;
   const rect = { x: imageLeft, y: imageTop, width: imageRight - imageLeft, height: imageBottom - imageTop };
   if (rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0 || rect.x + rect.width > canvas.width || rect.y + rect.height > canvas.height) return null;
-  return rect;
+  return { rect, markerErrors: found.reduce((total, marker) => total + marker.errors, 0) };
+}
+
+function imageConfidence(pHashDistance, dHashDistance, chromaError, markerErrors) {
+  const pHashSimilarity = 1 - pHashDistance / 256;
+  const dHashSimilarity = 1 - dHashDistance / 64;
+  const chromaSimilarity = 1 - chromaError / 480;
+  const markerSimilarity = 1 - markerErrors / (4 * 49);
+  return Math.round(100 * (0.4 * pHashSimilarity + 0.25 * dHashSimilarity + 0.25 * chromaSimilarity + 0.1 * markerSimilarity));
 }
 
 export async function verifyImage(canvas, packet) {
@@ -428,12 +436,13 @@ export async function verifyImage(canvas, packet) {
   const scaleX = canvas.width / image.canvasWidth;
   const scaleY = canvas.height / image.canvasHeight;
   if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || Math.abs(scaleX / scaleY - 1) > 0.01) {
-    return { state: 'invalid', reason: '图像比例变化过大，无法确认主体边界；裁切或非等比变形不支持。' };
+    return { state: 'invalid', confidence: 0, reason: '图像比例变化过大，无法确认主体边界；裁切或非等比变形不支持。' };
   }
-  const rect = locateImageRect(canvas, image, scaleX, scaleY);
-  if (!rect) {
-    return { state: 'invalid', reason: '未能确认图像四周的定位块，无法确保摘要对应原始主体区域。' };
+  const located = locateImageRect(canvas, image, scaleX, scaleY);
+  if (!located) {
+    return { state: 'invalid', confidence: 0, reason: '未能确认图像四周的定位块，无法确保摘要对应原始主体区域。' };
   }
+  const { rect, markerErrors } = located;
   const actual = imageFingerprint(canvas, rect);
   const expected = unbase64(image.fingerprint);
   let pHashDistance = 0, dHashDistance = 0, chromaError = 0, maxChromaError = 0;
@@ -445,11 +454,12 @@ export async function verifyImage(canvas, packet) {
     chromaError += cbError + crError;
     maxChromaError = Math.max(maxChromaError, cbError, crError);
   }
+  const confidence = imageConfidence(pHashDistance, dHashDistance, chromaError, markerErrors);
   if (pHashDistance <= MAX_PHASH_DISTANCE && dHashDistance <= MAX_DHASH_DISTANCE && chromaError <= MAX_CHROMA_ERROR && maxChromaError <= MAX_CHROMA_COMPONENT_ERROR) {
-    if (!pHashDistance && !dHashDistance && !chromaError) return { state: 'exact', reason: '本站签名有效，主体感知指纹完全一致。' };
-    return { state: 'tolerant', reason: `主体感知指纹在轻微失真容差内匹配（pHash ${pHashDistance}/256，dHash ${dHashDistance}/64，色差 ${chromaError}/32）。` };
+    if (!pHashDistance && !dHashDistance && !chromaError) return { state: 'exact', confidence, reason: '本站签名有效，主体感知指纹完全一致。' };
+    return { state: 'tolerant', confidence, reason: `主体感知指纹在轻微失真容差内匹配（pHash ${pHashDistance}/256，dHash ${dHashDistance}/64，色差 ${chromaError}/32）。` };
   }
-  return { state: 'invalid', reason: `主体感知指纹差异超出容差（pHash ${pHashDistance}/256，dHash ${dHashDistance}/64，色差 ${chromaError}/32）。` };
+  return { state: 'invalid', confidence: Math.min(49, confidence), reason: `主体感知指纹差异超出容差（pHash ${pHashDistance}/256，dHash ${dHashDistance}/64，色差 ${chromaError}/32）。` };
 }
 
 export function parsePacket(value) {
