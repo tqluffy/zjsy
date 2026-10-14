@@ -170,17 +170,14 @@ function drawBorderBrand(context, layout) {
   context.font = '500 10px ' + FONTS.sans;
   context.fillText(SITE_URL, textX, logoY + logoSize * 0.75, textWidth);
   context.restore();
-  return { right: Math.min(layout.width - layout.side, textX + textWidth), bottom: qr.bottom };
+  return { bottom: qr.bottom };
 }
 
 function drawBorderHeader(context, layout, settings) {
   const brand = drawBorderBrand(context, layout);
-  const compact = layout.width < 760;
-  const left = compact ? layout.side : brand.right + Math.max(12, layout.side * 0.25);
-  const right = layout.width - layout.side;
-  const maxWidth = Math.max(48, right - left);
-  const textTop = compact ? brand.bottom + 8 : layout.side * 0.6;
-  const textBottom = layout.top - layout.side * 0.65;
+  const maxWidth = Math.max(48, layout.width - layout.side * 2);
+  const textTop = brand.bottom + 12;
+  const textBottom = layout.top - layout.side * 0.3;
   const availableHeight = Math.max(18, textBottom - textTop);
   let size = Math.max(7, Math.min(30, Math.min(layout.imageWidth, layout.imageHeight) * 0.036));
   let lines;
@@ -203,13 +200,13 @@ function drawBorderHeader(context, layout, settings) {
   context.fillStyle = '#252735';
   context.font = '700 ' + size + 'px ' + FONTS.sans;
   for (const line of lines) {
-    context.fillText(line, left + maxWidth / 2, y, maxWidth);
+    context.fillText(line, layout.width / 2, y, maxWidth);
     y += size * 1.32;
   }
   context.fillStyle = '#626678';
   context.font = '500 ' + (size * 0.7) + 'px ' + FONTS.sans;
   for (const line of metaLines) {
-    context.fillText(line, left + maxWidth / 2, y, maxWidth);
+    context.fillText(line, layout.width / 2, y, maxWidth);
     y += size;
   }
   context.restore();
