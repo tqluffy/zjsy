@@ -1,7 +1,7 @@
 import { qrcodegen } from './vendor/qrcodegen.js';
 import { footerLayout, drawProofPlaceholder, IMAGE_MARKER_SIZE } from './proof.js';
 // Drawing remains local. Signing is requested separately by the export flow.
-const SITE_URL = 'https://zjsy.zhtianqi.cn/';
+const SITE_URL = 'https://zjsy.zhtianqi.cn';
 const FONTS = {
   sans: '"PingFang SC","Microsoft YaHei",sans-serif',
   serif: '"Songti SC","SimSun",serif',
@@ -30,7 +30,7 @@ export function getLayout(image, settings) {
   const height = Math.max(1, Math.round(originalHeight * sourceScale));
   const rawSide = settings.border ? Math.round(Math.min(width, height) * settings.borderSize / 100) : 0;
   const side = settings.border && settings.verification ? Math.max(IMAGE_MARKER_SIZE, rawSide) : rawSide;
-  const top = settings.border ? side + Math.max(140, Math.round(Math.min(width, height) * 0.19)) : 0;
+  const top = settings.border ? side + Math.max(210, Math.round(Math.min(width, height) * 0.19)) : 0;
   const proof = settings.border && settings.verification;
   const fullWidth = settings.border ? Math.max(proof ? 640 : 360, width + side * 2) : width;
   const bodyHeight = height + side + top;
@@ -137,7 +137,7 @@ function drawBrandLogo(context, x, y, size) {
 function drawSiteCode(context, layout) {
   const qr = qrcodegen.QrCode.encodeText(SITE_URL, qrcodegen.QrCode.Ecc.MEDIUM);
   const side = layout.side;
-  const maxSize = Math.min(96, (layout.top - side * 2) * 0.9, layout.width * 0.22);
+  const maxSize = Math.min(120, (layout.top - side * 2) * 0.9, layout.width * 0.32);
   const moduleSize = Math.max(1, Math.min(3, Math.floor(maxSize / (qr.size + 8))));
   const size = (qr.size + 8) * moduleSize;
   const x = side;
@@ -153,29 +153,29 @@ function drawSiteCode(context, layout) {
 
 function drawBorderBrand(context, layout) {
   const qr = drawSiteCode(context, layout);
-  const gap = Math.max(8, Math.round(layout.side * 0.28));
-  const logoSize = Math.min(34, Math.max(18, qr.size * 0.44));
+  const gap = Math.max(12, Math.round(layout.side * 0.32));
+  const logoSize = Math.min(44, Math.max(30, qr.size * 0.42));
   const logoX = qr.right + gap;
   const logoY = qr.y + (qr.size - logoSize) / 2;
   drawBrandLogo(context, logoX, logoY, logoSize);
-  const textX = logoX + logoSize + 8;
-  const textWidth = Math.min(176, Math.max(24, layout.width - textX - layout.side));
+  const textX = logoX + logoSize + 10;
+  const textWidth = Math.min(210, Math.max(60, layout.width - textX - layout.side));
   context.save();
   context.textAlign = 'left';
   context.textBaseline = 'middle';
   context.fillStyle = '#333447';
-  context.font = '700 11px ' + FONTS.sans;
+  context.font = '700 13px ' + FONTS.sans;
   context.fillText('证件水印', textX, logoY + logoSize * 0.32, textWidth);
   context.fillStyle = '#686b7c';
-  context.font = '500 8px ' + FONTS.sans;
-  context.fillText('https://zjsy.zhtianqi.cn', logoX, logoY + logoSize * 0.79, Math.max(textWidth, logoSize + textWidth + 8));
+  context.font = '500 10px ' + FONTS.sans;
+  context.fillText(SITE_URL, textX, logoY + logoSize * 0.75, textWidth);
   context.restore();
   return { right: Math.min(layout.width - layout.side, textX + textWidth), bottom: qr.bottom };
 }
 
 function drawBorderHeader(context, layout, settings) {
   const brand = drawBorderBrand(context, layout);
-  const compact = layout.width < 620;
+  const compact = layout.width < 760;
   const left = compact ? layout.side : brand.right + Math.max(12, layout.side * 0.25);
   const right = layout.width - layout.side;
   const maxWidth = Math.max(48, right - left);
