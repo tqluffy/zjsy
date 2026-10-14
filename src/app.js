@@ -1,5 +1,5 @@
 import { createDemo, getLayout, randomSeed, render } from './render.js';
-import { addProof } from './proof.js';
+import { addProof, prepareBrandAssets } from './proof.js';
 
 const $ = (id) => document.getElementById(id);
 const form = $('settings');
@@ -357,6 +357,7 @@ form.addEventListener('submit', async (event) => {
     // Let the busy label paint before the full-resolution synchronous draw.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (exportVersion !== loadVersion) return;
+    await prepareBrandAssets();
     const layout = render(canvas, exportSource, settings, exportSeed);
     if (settings.verification) {
       buttonLabel.textContent = '正在生成本站验证凭据…';
@@ -398,5 +399,6 @@ window.addEventListener('pagehide', () => {
 defaultExpiry();
 if (matchMedia('(pointer: coarse)').matches) $('export-size').value = '2048';
 syncControls();
+prepareBrandAssets().then(() => schedulePreview());
 if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => schedulePreview()).observe($('drop-zone'));
 else window.addEventListener('resize', schedulePreview, { passive: true });

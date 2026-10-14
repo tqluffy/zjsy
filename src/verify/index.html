@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f7fb">
-  <meta name="description" content="扫描二维码即可在本地核对水印内容签名，选择图像后核对主体像素摘要；照片不会上传。">
+  <meta name="description" content="扫描二维码即可本地核验水印声明；选择图像后由四角定位块确定主体区域，并在轻微失真容差内核对感知指纹。">
   <title>验证照片 · 证件水印</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="/styles.css">
@@ -13,7 +13,7 @@
 <body>
   <header class="site-header"><a class="brand" href="/"><img src="/favicon.ico" width="34" height="34" alt=""><span>证件水印<span class="brand-en">ZJSY</span></span></a><nav aria-label="网站导航"><a href="/">制作水印</a><a class="source-link" href="https://github.com/tqluffy/zjsy" target="_blank" rel="noopener noreferrer">GitHub 开源 ↗</a></nav></header>
   <main class="page verify-page">
-    <section class="intro"><div><p class="eyebrow">LOCAL VERIFICATION · 完全本地核对</p><h1>核对水印声明与图像主体。</h1><p class="intro-copy">扫描二维码即可核验水印文字；选择图像后，在本地核对主体像素摘要。照片不会上传。</p></div></section>
+    <section class="intro"><div><p class="eyebrow">LOCAL VERIFICATION · 完全本地核对</p><h1>核对水印声明与图像主体。</h1><p class="intro-copy">扫描二维码即可核验水印文字；选图后先确认四角定位块，再核对主体感知指纹。照片不会上传。</p></div></section>
     <section id="credential-card" class="credential-card" hidden aria-labelledby="credential-title">
       <p class="eyebrow">SIGNED WATERMARK · LOCAL SIGNATURE CHECK</p><h2 id="credential-title">二维码中的水印内容</h2>
       <pre id="claim-watermark" class="claim-watermark"></pre>
@@ -23,13 +23,13 @@
     </section>
     <section class="verify-upload" aria-label="选择待核对照片">
       <input id="verify-input" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="选择本地验证图像">
-      <h2>核对图像主体摘要</h2><p>选择包含白边和二维码的完整图像。主体摘要在设备上计算，不会上传照片。</p>
+      <h2>核对图像主体指纹</h2><p>选择包含四角定位块和签名二维码的完整图像。定位块确认主体边界；主体指纹在设备上计算，不会上传照片。</p>
       <button id="verify-choose" class="button primary" type="button">选择本地照片并核对</button>
       <button id="verify-clear" class="button secondary" type="button" hidden>清除图像与结果</button>
       <p id="verify-file-name" class="micro-copy"></p><img id="verify-preview" alt="所选择的待验证图像" hidden>
     </section>
     <section id="verify-result" class="verify-result" role="status" aria-live="polite" hidden><h2 id="result-title"></h2><p id="result-detail"></p></section>
-    <details class="faq" open><summary>结果应该如何理解？</summary><p>扫描二维码会核验二维码中水印文字的摘要和本站数字签名，不需要图像。选择图像后会重新计算主体像素摘要；只有摘要完全一致才通过。任何像素修改、重新编码或尺寸变化都可能导致精确核对失败，PNG 更适合保存原始像素。</p><p>签名不证明证件本身真实，也不核验署名者身份。签名服务公开，任何人都可以请求它签署摘要；签名只说明对应摘要由服务签出，不证明调用者使用了未经修改的网页。</p></details>
+    <details class="faq" open><summary>结果应该如何理解？</summary><p>扫描二维码会核验二维码中水印文字的摘要和本站数字签名，不需要图像。选择图像后，页面先确认四角定位块，再对定位块围出的原始主体区域计算感知指纹。轻微压缩失真可在容差内匹配；明显修改、裁切、定位块缺失或非等比变形会核对失败。容差匹配不代表每个像素完全相同。</p><p>签名不证明证件本身真实，也不核验署名者身份。签名服务公开，任何人都可以请求它签署摘要；签名只说明对应摘要由服务签出，不证明调用者使用了未经修改的网页。</p></details>
     <p class="verify-privacy">二维码明文包含水印文字、摘要、签名和公开的密钥 ID。二维码数据位于网址片段，不会随网页请求发送给服务器；扫码软件可能记录二维码网址。选择图像和核验过程都在本地完成。</p>
   </main>
   <footer class="site-footer"><span>证件水印 · 本地核对，照片不上传</span><a href="__BUILD_URL__" target="_blank" rel="noopener noreferrer">__BUILD_LABEL__ ↗</a></footer>

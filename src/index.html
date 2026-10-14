@@ -68,8 +68,8 @@
           </section>
           <section class="setting-section border-section">
             <div class="toggle-title"><div class="section-title"><span class="section-number">03</span><h3>白边与骑缝</h3></div><label class="switch"><input id="border" name="border" type="checkbox" role="switch" aria-label="启用白边模式"><span></span></label></div>
-            <p class="section-copy">在原图外增加白边，上方明显标注用途、有效期和签名。</p>
-            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><label class="check-label"><input id="verification" name="verification" type="checkbox"><span>本站来源验证 · 二维码双重签名</span></label><p id="verification-note" class="proof-note" hidden>下方增加二维码，不在主体中写入隐藏信息。扫码即可核验二维码中的水印文字；选择图像后核对主体摘要。签名接口仅接收水印与图像的 SHA-256 摘要，不接收水印文字或图像内容。PNG 更适合保留主体像素。签名不证明证件内容真实。</p><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
+            <p class="section-copy">在原图外增加白边，标注用途、有效期和签名，并加入本站识别信息。</p>
+            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><label class="check-label"><input id="verification" name="verification" type="checkbox"><span>本站来源验证 · 二维码双重签名</span></label><p id="verification-note" class="proof-note" hidden>白边左上角包含本站 Logo、地址和网站二维码；签名二维码位于下方，中心带本站 Logo。主体四角增加定位块，确保核验只读取原图主体区域。启用验证时侧边白边至少 27 px；轻微压缩失真可在感知指纹容差内核对。签名接口仅接收水印与图像摘要，不接收水印文字或图像像素。签名不证明证件内容真实。</p><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
           </section>
           <section class="export-section">
             <div class="export-heading"><h3>准备好了，就带走吧</h3><span>尺寸由你选择</span></div>

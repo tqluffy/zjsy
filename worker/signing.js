@@ -70,7 +70,7 @@ async function loadSigner(secret) {
 }
 
 async function signDigest(keyId, key, kind, digest) {
-  const message = encoder.encode(`ZJSY-${kind}-proof/v2\n${keyId}\n${digest}`);
+  const message = encoder.encode(`ZJSY-${kind}-proof/v3\n${keyId}\n${digest}`);
   const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, message));
   return btoa(String.fromCharCode(...signature)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }

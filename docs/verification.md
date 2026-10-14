@@ -1,10 +1,10 @@
-# ZJSY 来源验证协议 v2
+# ZJSY 来源验证协议 v3
 
 ## 概要
 
-旧的主体/白边隐写、纠错码和二维码凭据格式全部移除。新版只在白边下方绘制二维码，不向主体或白边像素写入隐藏数据。二维码包含水印声明、两个已签名摘要和公开密钥 ID。
+协议只在白边绘制可见二维码，不在照片主体中写入隐藏数据。白边左上角有网站首页二维码、Logo 和地址；启用验证后，白边下方增加中心带 Logo 的签名二维码。照片四角外的白边中会绘制四个 QR finder 风格定位块。
 
-可信 ECDSA P-256 公钥随验证页发布；签名私钥只保存在 Cloudflare Secret。签名接口公开，不核验调用者身份或网页执行过程。签名表明服务为某摘要生成签名，不证明证件真实、署名者身份或调用者按本站前端操作。
+二维码包含水印文字声明、图像主体感知指纹、两份签名摘要，以及公开密钥 ID。水印签名扫码即可核验；图像指纹需要选择图像并在本地验证。可信 ECDSA P-256 公钥随验证页发布，签名私钥只保存在 Cloudflare Secret。签名服务公开，不核验调用者或网页执行过程。
 
 ## 水印声明摘要
 
@@ -18,21 +18,29 @@
 
     watermarkDigest = SHA-256(UTF8(watermarkText + "https://zjsy.zhtianqi.cn"))
 
-二维码带有 `watermarkText`、小写十六进制 `watermarkDigest` 和签名。验证页只需扫描二维码，即可重算摘要、验证本站公钥签名并显示声明，不需要选择图像。
+二维码带有 `watermarkText`、小写十六进制 `watermarkDigest` 和签名。验证页扫描后在本地重算摘要、验证本站公钥签名并显示声明，不需要选择图像。
 
-## 图像主体摘要
+## 图像主体指纹
 
-主体区域是导出画布中承载原照片的矩形，包含覆盖在照片上的可见水印，不包含白边标题、骑缝文字或二维码页脚。二维码同时携带画布尺寸 `(canvasWidth, canvasHeight)` 和主体矩形 `(x, y, width, height)`。
+主体是画布中承载原照片的矩形，包含可见水印，不包含白边标题、四角定位块、骑缝文字或二维码。二维码签名图像画布尺寸、主体矩形和定位块尺寸；定位块在主体左右两侧的白边中。
 
-先对矩形 RGBA 字节计算 SHA-256，再将尺寸与像素摘要绑定：
+浏览器将主体等比缩到 32×32 灰度图，生成两种感知哈希：
 
-    pixelDigest = SHA-256(RGBA bytes)
-    description = "<canvasWidth>x<canvasHeight>:<x>,<y>,<width>,<height>"
-    imageDigest = SHA-256(UTF8("ZJSY-image-content/v2\n" + description + "\n" + lowercaseHex(pixelDigest)))
+- **pHash**：对灰度图计算 16×16 低频 DCT 系数（排除 DC），用中位数阈值编码为 256 位；
+- **dHash**：对 9×8 采样点逐行比较亮度，编码为 64 位；
+- **cHash**：对 4×4 主体分区计算平均 Cb/Cr 色度，各量化为 4 位，共 128 位。
 
-选择图像后，浏览器在本地重新计算并精确比对 `imageDigest`。尺寸、主体像素或重新编码后的像素变化都会导致核对失败。PNG 更适合保留原始像素；JPG 会对主体有损编码，分享平台再次处理也会改变摘要。
+三组特征构成 56 字节指纹。其摘要将画布尺寸、主体矩形、定位块尺寸和指纹绑定：
 
-JPG 导出会先在二维码页脚尚未绘制时本地编码并解码，再计算主体摘要。二维码和说明文字随后只绘制在与主体分开的白边页脚，因此不进入主体摘要。
+    featureHash = SHA-256(fingerprint bytes)
+    description = "<canvasWidth>x<canvasHeight>:<x>,<y>,<width>,<height>:m<markerSize>"
+    imageDigest = SHA-256(UTF8("ZJSY-image-content/v3\n" + description + "\n" + lowercaseHex(featureHash)))
+
+验证时先要求图像整体等比缩放（宽高比例误差不超过 1%），再按已签名的主体边界检查四个定位块。只有四个 finder pattern 均匹配，才会对它们围住的主体区域计算指纹。裁切、非等比变形或定位块损坏都会失败，不尝试从二维码或白边之外推测主体。
+
+距离 `pHash ≤ 18/256`、`dHash ≤ 8/64`、32 个色度量化值的差异总和 `≤ 32` 且单项色度差异 `≤ 4/15` 时允许通过；零差异显示完全一致，非零但在阈值内显示“轻微失真容差内匹配”。较大修改、明显颜色变化、不同图像和严重压缩仍会失败。感知哈希不能证明每个像素未改，也可能将视觉相似图像视为接近；它用于抵抗轻微传输失真，不等同于精确像素摘要。
+
+JPG 导出会先在本地编码、解码主体区域，再计算感知指纹。主体以外的定位块和白边二维码不参与主体指纹。
 
 ## 签名与二维码
 
@@ -40,19 +48,19 @@ JPG 导出会先在二维码页脚尚未绘制时本地编码并解码，再计�
 
     {"watermarkDigest":"<64 lowercase hex>","imageDigest":"<64 lowercase hex>"}
 
-接口不会接收水印文字、原始图像、图像像素或元数据。Worker 对两份摘要分别签名，使用 UTF-8 消息：
+接口不会接收水印文字、图像像素、原图或原始主体特征。Worker 对两份摘要分别签名，使用 UTF-8 消息：
 
-    ZJSY-watermark-proof/v2
+    ZJSY-watermark-proof/v3
     <keyId>
     <watermarkDigest>
 
-    ZJSY-image-proof/v2
+    ZJSY-image-proof/v3
     <keyId>
     <imageDigest>
 
-签名为 64 字节 ECDSA P-256 值，以 Base64URL 放入二维码。二维码指向 `/verify/#p=...`；网址片段不在 HTTP 请求中。扫码器可以记录完整二维码网址，站点无法控制外部扫码软件。
+签名为 64 字节 ECDSA P-256 值，以 Base64URL 放入二维码。签名二维码使用高纠错等级，在中心覆盖白底 Logo。二维码指向 `/verify/#p=...`；网址片段不在 HTTP 请求中。扫码软件可能记录完整网址。
 
-水印文字摘要与图像主体摘要相互独立：前者扫描即可核验，后者需要本地图像像素。二维码明文包含水印文字和摘要。摘要不是加密，不能用来还原原文，但对猜测性较强的短内容可能进行离线枚举。
+二维码里的短感知指纹不包含可还原原图的像素，但可以粗略反映主体结构；签名接口只收到指纹摘要。
 
 ## 密钥轮换
 
@@ -60,10 +68,10 @@ Cloudflare Secret `ZJSY_SIGNING_KEYS` 使用 JSON 密钥列表：
 
     {"activeKeyId":"<public id>","keys":{"<public id>":"<Base64 PKCS#8 private key>"}}
 
-Worker 仅用 `activeKeyId` 对应私钥签名。ID 由公钥 SPKI 的 SHA-256 前 8 字节取十六进制得到，公开写入二维码和 `src/verification-keys.js`。生成脚本会把新私钥写入仓库外的本地密钥清单，并将新公钥加入浏览器可信列表；部署时把更新后的密钥清单上传至 Cloudflare Secret。Cloudflare 单个变量上限为 5 KB；清单接近上限时生成脚本会删除旧私钥条目。验证页保留旧公钥即可继续验证先前新版二维码，因为历史核验不需要服务器持有旧私钥。私钥列表只用于运维保管和签名密钥轮换，客户端不信任 QR 自带公钥。[Cloudflare Workers 限制](https://developers.cloudflare.com/workers/platform/limits/)
+Worker 仅用 `activeKeyId` 对应私钥签名。ID 由公钥 SPKI 的 SHA-256 前 8 字节取十六进制得到，公开写入二维码和 `src/verification-keys.js`。生成脚本会把新私钥写入仓库外的本地密钥清单，并将新公钥加入浏览器可信列表；部署时把更新后的密钥清单上传至 Cloudflare Secret。Cloudflare 单个变量上限为 5 KB；清单接近上限时生成脚本会删除旧私钥条目。历史验证由浏览器保留的旧公钥完成，不需要服务器保留旧私钥。[Cloudflare Workers 限制](https://developers.cloudflare.com/workers/platform/limits/)
 
-旧版二维码协议不再接受。新版生成的二维码按可信公钥列表验证；从列表撤销某个 ID 会使对应密钥签名的二维码失效。
+旧二维码协议不再接受。新版二维码按可信公钥列表验证；从列表撤销某个 ID 会使对应密钥签名的二维码失效。
 
 ## 数据处理
 
-Worker 不持久化摘要，不使用数据库、KV、R2、Cookie 或后台任务；项目关闭 Worker observability。平台仍可能处理常规请求元数据。验证页面通过 CSP 禁止连接网络；图像加载、解码、摘要计算和比对在浏览器本地完成。
+Worker 不持久化摘要，不使用数据库、KV、R2、Cookie 或后台任务；项目关闭 Worker observability。平台仍可能处理常规请求元数据。验证页面通过 CSP 禁止连接网络；图像解码、定位块识别、指纹计算和比对都在浏览器本地完成。

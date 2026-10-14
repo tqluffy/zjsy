@@ -1,5 +1,7 @@
-import { footerLayout, drawProofPlaceholder } from './proof.js';
+import { qrcodegen } from './vendor/qrcodegen.js';
+import { footerLayout, drawProofPlaceholder, IMAGE_MARKER_SIZE } from './proof.js';
 // Drawing remains local. Signing is requested separately by the export flow.
+const SITE_URL = 'https://zjsy.zhtianqi.cn/';
 const FONTS = {
   sans: '"PingFang SC","Microsoft YaHei",sans-serif',
   serif: '"Songti SC","SimSun",serif',
@@ -26,10 +28,11 @@ export function getLayout(image, settings) {
   const sourceScale = settings.exportMax ? Math.min(1, settings.exportMax / Math.max(originalWidth, originalHeight)) : 1;
   const width = Math.max(1, Math.round(originalWidth * sourceScale));
   const height = Math.max(1, Math.round(originalHeight * sourceScale));
-  const side = settings.border ? Math.round(Math.min(width, height) * settings.borderSize / 100) : 0;
-  const top = settings.border ? side + Math.round(Math.min(width, height) * 0.19) : 0;
+  const rawSide = settings.border ? Math.round(Math.min(width, height) * settings.borderSize / 100) : 0;
+  const side = settings.border && settings.verification ? Math.max(IMAGE_MARKER_SIZE, rawSide) : rawSide;
+  const top = settings.border ? side + Math.max(140, Math.round(Math.min(width, height) * 0.19)) : 0;
   const proof = settings.border && settings.verification;
-  const fullWidth = proof ? Math.max(640, width + side * 2) : width + side * 2;
+  const fullWidth = settings.border ? Math.max(proof ? 640 : 360, width + side * 2) : width;
   const bodyHeight = height + side + top;
   const fullHeight = proof ? footerLayout(fullWidth, bodyHeight, settings).height : bodyHeight;
   return { width: fullWidth, height: fullHeight, bodyHeight, imageX: Math.round((fullWidth - width) / 2), imageY: top, imageWidth: width, imageHeight: height, side, top, sourceScale };
@@ -117,14 +120,72 @@ function drawTiles(context, layout, settings, seed) {
   context.restore();
 }
 
+function drawBrandLogo(context, x, y, size) {
+  const logo = document.querySelector('.brand img');
+  if (logo?.complete && logo.naturalWidth) context.drawImage(logo, x, y, size, size);
+  else {
+    context.fillStyle = '#5346d5';
+    context.fillRect(x, y, size, size);
+    context.fillStyle = '#fff';
+    context.font = '700 ' + Math.max(8, size * 0.62) + 'px sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('Z', x + size / 2, y + size / 2);
+  }
+}
+
+function drawSiteCode(context, layout) {
+  const qr = qrcodegen.QrCode.encodeText(SITE_URL, qrcodegen.QrCode.Ecc.MEDIUM);
+  const side = layout.side;
+  const maxSize = Math.min(96, (layout.top - side * 2) * 0.9, layout.width * 0.22);
+  const moduleSize = Math.max(1, Math.min(3, Math.floor(maxSize / (qr.size + 8))));
+  const size = (qr.size + 8) * moduleSize;
+  const x = side;
+  const y = side;
+  context.fillStyle = '#fff';
+  context.fillRect(x, y, size, size);
+  context.fillStyle = '#171923';
+  for (let row = 0; row < qr.size; row++) for (let col = 0; col < qr.size; col++) {
+    if (qr.getModule(col, row)) context.fillRect(x + (col + 4) * moduleSize, y + (row + 4) * moduleSize, moduleSize, moduleSize);
+  }
+  return { x, y, size, right: x + size, bottom: y + size };
+}
+
+function drawBorderBrand(context, layout) {
+  const qr = drawSiteCode(context, layout);
+  const gap = Math.max(8, Math.round(layout.side * 0.28));
+  const logoSize = Math.min(34, Math.max(18, qr.size * 0.44));
+  const logoX = qr.right + gap;
+  const logoY = qr.y + (qr.size - logoSize) / 2;
+  drawBrandLogo(context, logoX, logoY, logoSize);
+  const textX = logoX + logoSize + 8;
+  const textWidth = Math.min(176, Math.max(24, layout.width - textX - layout.side));
+  context.save();
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillStyle = '#333447';
+  context.font = '700 11px ' + FONTS.sans;
+  context.fillText('证件水印', textX, logoY + logoSize * 0.32, textWidth);
+  context.fillStyle = '#686b7c';
+  context.font = '500 8px ' + FONTS.sans;
+  context.fillText('https://zjsy.zhtianqi.cn', logoX, logoY + logoSize * 0.79, Math.max(textWidth, logoSize + textWidth + 8));
+  context.restore();
+  return { right: Math.min(layout.width - layout.side, textX + textWidth), bottom: qr.bottom };
+}
+
 function drawBorderHeader(context, layout, settings) {
-  const maxWidth = layout.width - layout.side * 2;
-  const availableHeight = layout.top - layout.side * 0.7;
-  let size = Math.max(8, Math.min(layout.imageWidth, layout.imageHeight) * 0.036);
+  const brand = drawBorderBrand(context, layout);
+  const compact = layout.width < 620;
+  const left = compact ? layout.side : brand.right + Math.max(12, layout.side * 0.25);
+  const right = layout.width - layout.side;
+  const maxWidth = Math.max(48, right - left);
+  const textTop = compact ? brand.bottom + 8 : layout.side * 0.6;
+  const textBottom = layout.top - layout.side * 0.65;
+  const availableHeight = Math.max(18, textBottom - textTop);
+  let size = Math.max(7, Math.min(30, Math.min(layout.imageWidth, layout.imageHeight) * 0.036));
   let lines;
   let metaLines;
   const meta = [settings.expiry ? '有效期至 ' + settings.expiry : '', settings.signature.trim() ? '签名：' + settings.signature.trim() : ''].filter(Boolean).join('  ·  ');
-  // Long statements are wrapped and fitted, rather than being cut off.
   for (let attempt = 0; attempt < 60; attempt++) {
     context.font = '700 ' + size + 'px ' + FONTS.sans;
     lines = wrapText(context, settings.purpose, maxWidth);
@@ -135,23 +196,44 @@ function drawBorderHeader(context, layout, settings) {
     size *= 0.94;
   }
   const totalHeight = lines.length * size * 1.32 + metaLines.length * size;
-  let y = Math.max(size * 0.7, (availableHeight - totalHeight) / 2) + size * 0.66;
+  let y = textTop + Math.max(size * 0.35, (availableHeight - totalHeight) / 2) + size * 0.5;
   context.save();
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.fillStyle = '#252735';
   context.font = '700 ' + size + 'px ' + FONTS.sans;
   for (const line of lines) {
-    context.fillText(line, layout.width / 2, y);
+    context.fillText(line, left + maxWidth / 2, y, maxWidth);
     y += size * 1.32;
   }
   context.fillStyle = '#626678';
   context.font = '500 ' + (size * 0.7) + 'px ' + FONTS.sans;
   for (const line of metaLines) {
-    context.fillText(line, layout.width / 2, y);
+    context.fillText(line, left + maxWidth / 2, y, maxWidth);
     y += size;
   }
   context.restore();
+}
+
+function drawFinderMarker(context, x, y) {
+  context.fillStyle = '#fff';
+  context.fillRect(x, y, IMAGE_MARKER_SIZE, IMAGE_MARKER_SIZE);
+  context.fillStyle = '#171923';
+  for (let row = 0; row < 7; row++) for (let col = 0; col < 7; col++) {
+    const black = row === 0 || row === 6 || col === 0 || col === 6 || (row >= 2 && row <= 4 && col >= 2 && col <= 4);
+    if (black) context.fillRect(x + (col + 1) * 3, y + (row + 1) * 3, 3, 3);
+  }
+}
+
+function drawImageMarkers(context, layout) {
+  const x = layout.imageX;
+  const y = layout.imageY;
+  const right = x + layout.imageWidth;
+  const bottom = y + layout.imageHeight;
+  drawFinderMarker(context, x - IMAGE_MARKER_SIZE, y);
+  drawFinderMarker(context, right, y);
+  drawFinderMarker(context, x - IMAGE_MARKER_SIZE, bottom - IMAGE_MARKER_SIZE);
+  drawFinderMarker(context, right, bottom - IMAGE_MARKER_SIZE);
 }
 
 function drawSeams(context, layout, settings, seed) {
@@ -198,7 +280,10 @@ export function render(canvas, image, settings, seed, { scale = 1, compare = fal
     if (settings.border) {
       drawBorderHeader(context, layout, settings);
       if (settings.seam) drawSeams(context, layout, settings, seed);
-      if (settings.verification) drawProofPlaceholder(context, layout, settings);
+      if (settings.verification) {
+        drawProofPlaceholder(context, layout, settings);
+        drawImageMarkers(context, layout);
+      }
     }
   }
   return layout;

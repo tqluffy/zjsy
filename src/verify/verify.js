@@ -30,7 +30,7 @@ async function showCredential(packet) {
     ? '通过：二维码中的水印文字与本站签名一致。'
     : '未通过：水印文字摘要或本站签名无效。';
   $('claim-image-state').textContent = imageSignatureValid
-    ? '签名有效；选择完整图像后核对主体内容。'
+    ? '签名有效；选择完整图像后确认四角定位块并核对主体指纹。'
     : '未通过：图像摘要的本站签名无效。';
   return { watermarkValid, imageSignatureValid };
 }
@@ -97,7 +97,12 @@ async function load(file) {
     }
     const verified = await verifyImage(canvas, packet);
     if (version !== operation) return;
-    result(verified.state, verified.state === 'exact' ? '图像主体校验一致' : '图像主体核对未通过', verified.reason);
+    const title = verified.state === 'exact'
+      ? '图像主体指纹一致'
+      : verified.state === 'tolerant'
+        ? '图像主体在轻微失真容差内匹配'
+        : '图像主体核对未通过';
+    result(verified.state, title, verified.reason);
   } catch (error) {
     if (version === operation) result('invalid', '无法完成核对', error.message || '请使用包含完整白边和二维码的图像重试。');
   } finally {
