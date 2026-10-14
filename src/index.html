@@ -69,7 +69,7 @@
           <section class="setting-section border-section">
             <div class="toggle-title"><div class="section-title"><span class="section-number">03</span><h3>白边与骑缝</h3></div><label class="switch"><input id="border" name="border" type="checkbox" role="switch" aria-label="启用白边模式"><span></span></label></div>
             <p class="section-copy">在原图外增加白边，上方明显标注用途、有效期和签名。</p>
-            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><label class="check-label"><input id="verification" name="verification" type="checkbox"><span>本站来源验证 · 主体隐写与二维码</span></label><p id="verification-note" class="proof-note" hidden>二维码包含已签名的用途、有效期和署名。仅向本站提交摘要获取签名，不发送照片或这些原始信息。下方会增加验证白边；主体最多改变蓝色最低一个色阶。PNG 适合严格核对，JPG 会进入压缩近似核对。签名不证明证件内容真实。</p><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
+            <div id="border-settings" hidden><div class="range-field"><label for="border-size">四周白边宽度</label><output for="border-size" id="border-size-value"></output><input id="border-size" name="borderSize" type="range" min="3" max="15" value="6"></div><label class="check-label"><input id="seam" name="seam" type="checkbox" checked><span>骑缝水印，横跨原图与白边</span></label><label class="check-label"><input id="verification" name="verification" type="checkbox"><span>本站来源验证 · 二维码双重签名</span></label><p id="verification-note" class="proof-note" hidden>下方增加二维码，不在主体中写入隐藏信息。扫码即可核验二维码中的水印文字；选择图像后核对主体摘要。签名接口仅接收水印与图像的 SHA-256 摘要，不接收水印文字或图像内容。PNG 更适合保留主体像素。签名不证明证件内容真实。</p><p class="micro-copy">白边只向外扩展，不裁剪原图。骑缝文字将跨越四周接缝。</p></div>
           </section>
           <section class="export-section">
             <div class="export-heading"><h3>准备好了，就带走吧</h3><span>尺寸由你选择</span></div>
@@ -87,7 +87,7 @@
     </section>
     <details class="faq"><summary>水印能提供怎样的保护？</summary><p>水印用于明确用途并增加被误用或随意复用的成本，不能保证防止盗用或 AI 去水印。接收方可能对水印、白边和二维码有要求，请在提交前确认。不要依赖水印代替必要的信息遮盖与接收方核验。</p></details>
   </main>
-  <footer class="site-footer"><span>证件水印 · 让每一次提供都有边界</span><a id="version-link" href="https://github.com/tqluffy/zjsy/tree/__BUILD_REVISION__" target="_blank" rel="noopener noreferrer">开源版本 __BUILD_SHORT__ <span aria-hidden="true">↗</span></a></footer>
+  <footer class="site-footer"><span>证件水印 · 让每一次提供都有边界</span><a id="version-link" href="__BUILD_URL__" target="_blank" rel="noopener noreferrer">__BUILD_LABEL__ <span aria-hidden="true">↗</span></a></footer>
   <div id="status" class="toast" role="status" aria-live="polite" hidden></div>
   <noscript><div class="noscript">本地照片处理需要 JavaScript，请启用后使用。</div></noscript>
 </body>

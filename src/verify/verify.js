@@ -1,4 +1,4 @@
-import { packetFromUrl, readQr, verifySignature, verifyImage } from '../proof.js';
+import { packetFromUrl, readQr, verifyWatermark, verifyImageSignature, verifyImage, samePacket } from '../proof.js';
 
 const $ = (id) => document.getElementById(id);
 const allowed = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/avif']);
@@ -6,26 +6,33 @@ let linkPacket = null;
 let fileUrl = null;
 let operation = 0;
 const initialUrl = location.href;
-// Remove the QR's personal metadata from this page's current history entry.
 if (location.hash) history.replaceState(null, '', location.pathname);
 
-function result(state, title, detail, carriers = '') {
+function result(state, title, detail) {
   $('verify-result').hidden = false;
   $('verify-result').className = 'verify-result ' + state;
   $('result-title').textContent = title;
   $('result-detail').textContent = detail;
-  $('result-carriers').textContent = carriers;
 }
 
 async function showCredential(packet) {
   $('credential-card').hidden = false;
-  $('claim-purpose').textContent = packet.info.purpose;
-  $('claim-expiry').textContent = packet.info.expiry || '未设置';
-  $('claim-signature').textContent = packet.info.signature || '未设置';
-  $('claim-issued').textContent = new Date(packet.issuedAt * 1000).toLocaleString();
-  const valid = await verifySignature(packet);
-  $('claim-state').textContent = valid ? '本站签名有效；请选择照片，继续核对图像内容与隐写凭据。' : '签名无效或公钥未被本站认可，不能信任这些信息。';
-  return valid;
+  $('claim-watermark').textContent = packet.watermark.text;
+  $('claim-keyid').textContent = packet.keyId;
+  $('claim-watermark-digest').textContent = packet.watermark.digest;
+  $('claim-image-digest').textContent = packet.image.digest;
+  $('claim-image-state').textContent = '正在核验本站签名…';
+  $('claim-watermark-state').textContent = '正在核验文字与本站签名…';
+  const [watermarkValid, imageSignatureValid] = await Promise.all([
+    verifyWatermark(packet), verifyImageSignature(packet),
+  ]);
+  $('claim-watermark-state').textContent = watermarkValid
+    ? '通过：二维码中的水印文字与本站签名一致。'
+    : '未通过：水印文字摘要或本站签名无效。';
+  $('claim-image-state').textContent = imageSignatureValid
+    ? '签名有效；选择完整图像后核对主体内容。'
+    : '未通过：图像摘要的本站签名无效。';
+  return { watermarkValid, imageSignatureValid };
 }
 
 function clear() {
@@ -81,18 +88,18 @@ async function load(file) {
     try { packet = await readQr(canvas); }
     catch (error) { if (!linkPacket) throw error; packet = linkPacket; }
     if (version !== operation) return;
-    if (linkPacket && (packet.bytes.length !== linkPacket.bytes.length || !packet.bytes.every((n, i) => n === linkPacket.bytes[i]))) throw new Error('这张图像的二维码与当前扫码链接不一致，请重新扫描图像中的二维码。');
-    if (!await showCredential(packet)) {
-      result('invalid', '签名验证失败', '凭据可能被修改，或不属于本站签发。');
+    if (linkPacket && !samePacket(packet, linkPacket)) throw new Error('这张图像的二维码与当前扫码链接不一致，请重新扫描图像中的二维码。');
+    const credential = await showCredential(packet);
+    if (version !== operation) return;
+    if (!credential.watermarkValid || !credential.imageSignatureValid) {
+      result('invalid', '二维码签名验证失败', '请不要依赖未经本站认可的验证信息。');
       return;
     }
     const verified = await verifyImage(canvas, packet);
     if (version !== operation) return;
-    const titles = { exact: '本站签名与内容校验一致', similar: '本站签名有效 · 压缩后内容近似', invalid: '图像核对未通过', unreadable: '凭据无法完整恢复' };
-    const carriers = verified.bodyCarrier !== undefined ? '主体隐写：' + (verified.bodyCarrier ? '已恢复' : '未恢复') + ' · 白边纠错隐写：' + (verified.borderCarrier ? '已恢复' : '未恢复') : '';
-    result(verified.state, titles[verified.state], verified.reason, carriers);
+    result(verified.state, verified.state === 'exact' ? '图像主体校验一致' : '图像主体核对未通过', verified.reason);
   } catch (error) {
-    if (version === operation) result('invalid', '无法完成核对', error.message || '请使用完整图像重新尝试。');
+    if (version === operation) result('invalid', '无法完成核对', error.message || '请使用包含完整白边和二维码的图像重试。');
   } finally {
     if (canvas) canvas.width = canvas.height = 1;
     if (image) image.removeAttribute('src');
@@ -117,9 +124,11 @@ document.addEventListener('paste', (event) => {
   if (item) { event.preventDefault(); load(item.getAsFile()); }
 });
 window.addEventListener('pagehide', clear);
+
 if (new URL(initialUrl).hash) {
   try {
     linkPacket = packetFromUrl(initialUrl);
-    if (!await showCredential(linkPacket)) result('invalid', '二维码签名无效', '请不要依赖未经本站认可的验证信息。');
+    const credential = await showCredential(linkPacket);
+    if (!credential.watermarkValid || !credential.imageSignatureValid) result('invalid', '二维码签名验证失败', '请不要依赖未经本站认可的验证信息。');
   } catch (error) { result('invalid', '二维码信息无法解析', error.message); }
 }

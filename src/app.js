@@ -360,7 +360,7 @@ form.addEventListener('submit', async (event) => {
     const layout = render(canvas, exportSource, settings, exportSeed);
     if (settings.verification) {
       buttonLabel.textContent = '正在生成本站验证凭据…';
-      await addProof(canvas, layout, settings);
+      await addProof(canvas, layout, settings, format, quality);
     }
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob((result) => result ? resolve(result) : reject(new Error('无法生成文件，请尝试 JPG 或缩小照片。')), 'image/' + format, quality);

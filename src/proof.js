@@ -1,84 +1,271 @@
 import { qrcodegen } from './vendor/qrcodegen.js';
-import { encode, decode } from './ecc.js';
 import { VERIFICATION_KEYS } from './verification-keys.js';
 
 export const VERIFY_URL = 'https://zjsy.zhtianqi.cn/verify/';
+const VERIFY_ORIGIN = 'https://zjsy.zhtianqi.cn';
 const PREFIX = VERIFY_URL + '#p=';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
-const COEFFICIENTS = [[1, 0], [0, 1], [1, 1], [2, 0]];
+const SIGNATURE_BYTES = 64;
+const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const KEY_ID_PATTERN = /^[a-f0-9]{16}$/;
 let footerCacheKey;
 let footerCache;
-const BASES = COEFFICIENTS.map(([u, v]) => Float64Array.from({ length: 64 }, (_, i) => {
-  const x = i % 8, y = Math.floor(i / 8);
-  return (u ? 0.5 : Math.SQRT1_2 / 2) * (v ? 0.5 : Math.SQRT1_2 / 2) * Math.cos((2 * x + 1) * u * Math.PI / 16) * Math.cos((2 * y + 1) * v * Math.PI / 16);
-}));
 
-export function base64(bytes) {
-  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+function base64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
-function unbase64(text) {
-  if (text.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(text)) throw new Error('验证信息格式不正确。');
-  return Uint8Array.from(atob(text.replaceAll('-', '+').replaceAll('_', '/')), (c) => c.charCodeAt(0));
+
+function unbase64(value) {
+  if (typeof value !== 'string' || value.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('二维码验证信息格式不正确。');
+  const padded = value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - value.length % 4) % 4);
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
-function hex(bytes) { return Array.from(bytes, (n) => n.toString(16).padStart(2, '0')).join(''); }
-function fromHex(text) { return Uint8Array.from(text.match(/../g), (n) => parseInt(n, 16)); }
+
+function hex(bytes) { return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join(''); }
 async function hash(bytes) { return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)); }
-function equal(a, b) { return a.length === b.length && a.every((n, i) => n === b[i]); }
 
-// The compact binary body keeps even long CJK statements small enough for a QR.
-export function serializeBody(layout, settings, digest = new Uint8Array(32), descriptor = new Uint8Array(64), nonce = new Uint8Array(8)) {
-  const purpose = encoder.encode(settings.purpose);
-  const signature = encoder.encode(settings.signature);
-  if (purpose.length > 400 || signature.length > 128) throw new Error('验证信息过长，请缩短用途或署名。');
-  const bytes = new Uint8Array(132 + purpose.length + signature.length);
-  const view = new DataView(bytes.buffer);
-  bytes[0] = 1;
-  const dimensions = [layout.width, layout.height, layout.bodyHeight, layout.imageX, layout.imageY, layout.imageWidth, layout.imageHeight];
-  dimensions.forEach((n, i) => view.setUint16(1 + i * 2, n));
-  bytes.set(nonce, 15);
-  bytes.set(digest, 23);
-  bytes.set(descriptor, 55);
-  view.setUint16(119, purpose.length);
-  const expiry = settings.expiry || '          ';
-  bytes.set(encoder.encode(expiry), 121);
-  bytes[131] = signature.length;
-  bytes.set(purpose, 132);
-  bytes.set(signature, 132 + purpose.length);
-  return bytes;
+export function watermarkText(settings) {
+  return [
+    settings.purpose.trim(),
+    settings.expiry ? '有效期至 ' + settings.expiry : '',
+    settings.signature.trim() ? '签名：' + settings.signature.trim() : '',
+  ].filter(Boolean).join('\n');
 }
 
-function parseBody(bytes) {
-  if (bytes.length < 132 || bytes[0] !== 1) throw new Error('不支持的验证格式。');
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const dimensions = Array.from({ length: 7 }, (_, i) => view.getUint16(1 + i * 2));
-  const [width, height, bodyHeight, imageX, imageY, imageWidth, imageHeight] = dimensions;
-  const purposeSize = view.getUint16(119);
-  const signatureSize = bytes[131];
-  if (purposeSize > 400 || signatureSize > 128 || bytes.length !== 132 + purposeSize + signatureSize) throw new Error('验证信息长度不正确。');
-  if (width < 640 || width > 16384 || height > 16384 || width * height > 40_000_000 || bodyHeight >= height || !imageWidth || !imageHeight || imageX + imageWidth > width || imageY + imageHeight > bodyHeight || imageWidth * imageHeight < 4080) throw new Error('验证图像尺寸不正确。');
-  const purpose = decoder.decode(bytes.subarray(132, 132 + purposeSize));
-  const signature = decoder.decode(bytes.subarray(132 + purposeSize));
-  const expiry = decoder.decode(bytes.subarray(121, 131)).trim();
-  if (!purpose.trim() || (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry))) throw new Error('验证用途或有效期格式不正确。');
-  return { width, height, bodyHeight, imageX, imageY, imageWidth, imageHeight, purpose, expiry, signature, strict: bytes.slice(23, 55), descriptor: bytes.slice(55, 119) };
+async function watermarkDigest(text) {
+  return hex(await hash(encoder.encode(text + VERIFY_ORIGIN)));
 }
 
-function envelope(body, keyId, issuedAt, signature) {
-  const bytes = new Uint8Array(78 + body.length);
-  bytes.set([90, 80]);
-  bytes.set(fromHex(keyId), 2);
-  new DataView(bytes.buffer).setUint32(10, issuedAt);
-  bytes.set(signature, 14);
-  bytes.set(body, 78);
-  return bytes;
+function imageDescription(width, height, rect) {
+  return `${width}x${height}:${rect.x},${rect.y},${rect.width},${rect.height}`;
+}
+
+async function imageDigestFromPixels(pixels, canvasWidth, canvasHeight, rect) {
+  const pixelDigest = hex(await hash(pixels));
+  const description = imageDescription(canvasWidth, canvasHeight, rect);
+  return hex(await hash(encoder.encode('ZJSY-image-content/v2\n' + description + '\n' + pixelDigest)));
+}
+
+async function imageDigest(canvas, rect) {
+  const pixels = canvas.getContext('2d', { willReadFrequently: true }).getImageData(rect.x, rect.y, rect.width, rect.height).data;
+  return imageDigestFromPixels(pixels, canvas.width, canvas.height, rect);
+}
+
+function toBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('无法准备验证图像，请尝试 PNG 或缩小照片。')), type, quality);
+  });
+}
+
+async function decodeBlob(blob) {
+  if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('浏览器无法读取导出的图像。'));
+      image.src = url;
+    });
+    return image;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function imageDigestForExport(canvas, rect, format, quality) {
+  if (format !== 'jpeg') return imageDigest(canvas, rect);
+  // Hash the decoded JPEG pixels. The QR is drawn later in the separate footer.
+  const bitmap = await decodeBlob(await toBlob(canvas, 'image/jpeg', quality));
+  const crop = document.createElement('canvas');
+  crop.width = rect.width;
+  crop.height = rect.height;
+  try {
+    crop.getContext('2d', { colorSpace: 'srgb', willReadFrequently: true })
+      .drawImage(bitmap, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+    const pixels = crop.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, rect.width, rect.height).data;
+    return imageDigestFromPixels(pixels, canvas.width, canvas.height, rect);
+  } finally {
+    if (typeof bitmap.close === 'function') bitmap.close();
+    crop.width = crop.height = 1;
+  }
+}
+
+function normalizePacket(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.v !== 2) throw new Error('不支持的二维码验证格式。');
+  if (!KEY_ID_PATTERN.test(value.keyId || '')) throw new Error('二维码密钥 ID 格式不正确。');
+  if (!value.watermark || typeof value.watermark !== 'object' || Array.isArray(value.watermark)) throw new Error('二维码缺少水印验证信息。');
+  if (!value.image || typeof value.image !== 'object' || Array.isArray(value.image)) throw new Error('二维码缺少图像验证信息。');
+  const text = value.watermark.text;
+  if (typeof text !== 'string' || !text.trim() || encoder.encode(text).length > 1024) throw new Error('二维码中的水印文字无效或过长。');
+  const watermarkHash = value.watermark.digest;
+  const imageHash = value.image.digest;
+  if (!DIGEST_PATTERN.test(watermarkHash || '') || !DIGEST_PATTERN.test(imageHash || '')) throw new Error('二维码摘要格式不正确。');
+  const watermarkSignature = value.watermark.signature;
+  const imageSignature = value.image.signature;
+  if (unbase64(watermarkSignature).length !== SIGNATURE_BYTES || unbase64(imageSignature).length !== SIGNATURE_BYTES) throw new Error('二维码签名长度不正确。');
+  const image = value.image;
+  const dimensions = [image.canvasWidth, image.canvasHeight, image.x, image.y, image.width, image.height];
+  if (!dimensions.every((number) => Number.isInteger(number) && number >= 0 && number <= 16384)) throw new Error('二维码图像尺寸无效。');
+  const [canvasWidth, canvasHeight, x, y, width, height] = dimensions;
+  if (!canvasWidth || !canvasHeight || !width || !height || canvasWidth * canvasHeight > 40_000_000 || width * height > 24_000_000 || x + width > canvasWidth || y + height > canvasHeight) throw new Error('二维码图像区域无效。');
+  return {
+    watermark: { text, digest: watermarkHash, signature: watermarkSignature },
+    image: { canvasWidth, canvasHeight, x, y, width, height, digest: imageHash, signature: imageSignature },
+    keyId: value.keyId,
+    v: 2,
+  };
+}
+
+function qrFor(packet) {
+  return qrcodegen.QrCode.encodeText(PREFIX + base64(encoder.encode(JSON.stringify(packet))), qrcodegen.QrCode.Ecc.MEDIUM);
+}
+
+function placeholderPacket(text) {
+  const signature = base64(new Uint8Array(SIGNATURE_BYTES));
+  return {
+    watermark: { text, digest: '0'.repeat(64), signature },
+    image: { canvasWidth: 16384, canvasHeight: 16384, x: 16384, y: 16384, width: 16384, height: 16384, digest: '0'.repeat(64), signature },
+    keyId: VERIFICATION_KEYS[0].id,
+    v: 2,
+  };
+}
+
+export function footerLayout(width, bodyHeight, settings) {
+  const text = watermarkText(settings);
+  const key = JSON.stringify([width, bodyHeight, text]);
+  if (key === footerCacheKey) return footerCache;
+  let qr;
+  try { qr = qrFor(placeholderPacket(text)); }
+  catch { throw new Error('二维码内容过长，请缩短水印文字。'); }
+  const qrSize = Math.ceil((qr.size + 8) * 3 / 8) * 8;
+  if (qrSize + 32 > width) throw new Error('二维码宽度不足，请导出更大的图像。');
+  const qrX = Math.floor((width - qrSize) / 2);
+  const qrY = bodyHeight + 16;
+  const height = Math.ceil((qrY + qrSize + 44) / 8) * 8;
+  footerCacheKey = key;
+  footerCache = { height, qrSize, qrX, qrY };
+  return footerCache;
+}
+
+export function drawProofPlaceholder(context, layout, settings) {
+  const geometry = footerLayout(layout.width, layout.bodyHeight, settings);
+  context.save();
+  context.fillStyle = '#fff';
+  context.fillRect(0, layout.bodyHeight, layout.width, layout.height - layout.bodyHeight);
+  context.strokeStyle = '#d6dbe7';
+  context.strokeRect(geometry.qrX + 8, geometry.qrY + 8, geometry.qrSize - 16, geometry.qrSize - 16);
+  context.fillStyle = '#858c9e';
+  context.font = '12px sans-serif';
+  context.textAlign = 'center';
+  context.fillText('导出时生成二维码', geometry.qrX + geometry.qrSize / 2, geometry.qrY + geometry.qrSize / 2);
+  context.fillStyle = '#7f8595';
+  context.font = '11px sans-serif';
+  context.fillText('扫码核验水印内容 · 选择图像核对主体', layout.width / 2, layout.height - 12);
+  context.restore();
+}
+
+function drawQr(context, qr, geometry) {
+  context.fillStyle = '#fff';
+  context.fillRect(geometry.qrX, geometry.qrY, geometry.qrSize, geometry.qrSize);
+  const moduleSize = 3;
+  const actualSize = (qr.size + 8) * moduleSize;
+  const left = geometry.qrX + Math.floor((geometry.qrSize - actualSize) / 2);
+  const top = geometry.qrY + Math.floor((geometry.qrSize - actualSize) / 2);
+  context.fillStyle = '#171923';
+  for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) {
+    if (qr.getModule(x, y)) context.fillRect(left + (x + 4) * moduleSize, top + (y + 4) * moduleSize, moduleSize, moduleSize);
+  }
+}
+
+async function requestSign(watermarkHash, imageHash) {
+  const result = await fetch('/api/sign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'omit',
+    cache: 'no-store',
+    body: JSON.stringify({ watermarkDigest: watermarkHash, imageDigest: imageHash }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!result.ok) throw new Error('本站签名暂不可用，未生成验证照片。可关闭验证后导出普通水印。');
+  return result.json();
+}
+
+export async function addProof(canvas, layout, settings, format, quality) {
+  const text = watermarkText(settings);
+  const rect = { x: layout.imageX, y: layout.imageY, width: layout.imageWidth, height: layout.imageHeight };
+  const [wmDigest, imgDigest] = await Promise.all([
+    watermarkDigest(text),
+    imageDigestForExport(canvas, rect, format, quality),
+  ]);
+  const signed = await requestSign(wmDigest, imgDigest);
+  if (!signed || !VERIFICATION_KEYS.some((key) => key.id === signed.keyId)) throw new Error('本站签名密钥配置不一致，请稍后重试。');
+  const packet = normalizePacket({
+    v: 2,
+    keyId: signed.keyId,
+    watermark: { text, digest: wmDigest, signature: signed.watermarkSignature },
+    image: {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      digest: imgDigest,
+      signature: signed.imageSignature,
+    },
+  });
+  const [watermarkValid, imageSignatureValid] = await Promise.all([verifyWatermark(packet), verifyImageSignature(packet)]);
+  if (!watermarkValid || !imageSignatureValid) throw new Error('本站返回的签名无效，已停止导出。');
+  const geometry = footerLayout(layout.width, layout.bodyHeight, settings);
+  drawQr(canvas.getContext('2d'), qrFor(packet), geometry);
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, layout.height - 28, layout.width, 28);
+  context.fillStyle = '#7f8595';
+  context.font = '11px sans-serif';
+  context.textAlign = 'center';
+  context.fillText('扫码核验水印内容 · 选择图像核对主体', layout.width / 2, layout.height - 12);
+  return packet;
+}
+
+async function verifyDetached(domain, keyId, digest, signature) {
+  const trusted = VERIFICATION_KEYS.find((key) => key.id === keyId);
+  if (!trusted) return false;
+  try {
+    const key = await crypto.subtle.importKey('jwk', trusted.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    const message = encoder.encode(`ZJSY-${domain}-proof/v2\n${keyId}\n${digest}`);
+    return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, unbase64(signature), message);
+  } catch { return false; }
+}
+
+export async function verifyWatermark(packet) {
+  const calculated = await watermarkDigest(packet.watermark.text);
+  return calculated === packet.watermark.digest && verifyDetached('watermark', packet.keyId, packet.watermark.digest, packet.watermark.signature);
+}
+
+export function verifyImageSignature(packet) {
+  return verifyDetached('image', packet.keyId, packet.image.digest, packet.image.signature);
+}
+
+export async function verifyImage(canvas, packet) {
+  const image = packet.image;
+  if (canvas.width !== image.canvasWidth || canvas.height !== image.canvasHeight) {
+    return { state: 'invalid', reason: '图像尺寸不匹配，主体摘要无法通过精确核对。' };
+  }
+  const rect = { x: image.x, y: image.y, width: image.width, height: image.height };
+  const calculated = await imageDigest(canvas, rect);
+  if (calculated === image.digest) return { state: 'exact', reason: '本站签名有效，图像主体像素摘要一致。' };
+  return { state: 'invalid', reason: '图像主体摘要不匹配，图像主体可能已被修改或重新编码。' };
 }
 
 export function parsePacket(value) {
-  const bytes = typeof value === 'string' ? unbase64(value) : value;
-  if (bytes.length < 210 || bytes.length > 900 || bytes[0] !== 90 || bytes[1] !== 80) throw new Error('未识别到本站的验证凭据。');
-  const body = bytes.slice(78);
-  return { bytes, body, keyId: hex(bytes.subarray(2, 10)), issuedAt: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(10), signature: bytes.slice(14, 78), info: parseBody(body) };
+  let parsed;
+  try { parsed = JSON.parse(decoder.decode(typeof value === 'string' ? unbase64(value) : value)); }
+  catch { throw new Error('无法读取二维码验证信息。'); }
+  return normalizePacket(parsed);
 }
 
 export function packetFromUrl(text) {
@@ -89,248 +276,13 @@ export function packetFromUrl(text) {
   return parsePacket(value);
 }
 
-function qrFor(bytes) {
-  return qrcodegen.QrCode.encodeText(PREFIX + base64(bytes), qrcodegen.QrCode.Ecc.MEDIUM);
-}
-
-export function footerLayout(width, bodyHeight, settings) {
-  const key = JSON.stringify([width, bodyHeight, settings.purpose, settings.expiry, settings.signature]);
-  if (key === footerCacheKey) return footerCache;
-  // Binary fields have fixed lengths; placeholder data gives the final QR size.
-  const dummy = { width, height: bodyHeight + 400, bodyHeight, imageX: 0, imageY: 0, imageWidth: width, imageHeight: bodyHeight };
-  const packet = envelope(serializeBody(dummy, settings), VERIFICATION_KEYS[0].id, 0, new Uint8Array(64));
-  const qr = qrFor(packet);
-  const qrSize = (qr.size + 8) * 3;
-  const columns = Math.floor((width - qrSize - 48) / 8);
-  if (columns < 10) throw new Error('二维码内容过长，请缩短用途或署名。');
-  const rows = Math.ceil(1020 / columns);
-  const carrierY = Math.ceil((bodyHeight + 20) / 8) * 8;
-  const height = Math.ceil(Math.max(bodyHeight + qrSize + 48, carrierY + rows * 8 + 32) / 8) * 8;
-  footerCacheKey = key;
-  footerCache = { height, qrSize, qrX: width - qrSize - 16, qrY: bodyHeight + 16, carrierX: 16, carrierY, columns, rows, carrierWidth: columns * 8, carrierHeight: rows * 8 };
-  return footerCache;
-}
-
-export function drawProofPlaceholder(context, layout, settings) {
-  const geometry = footerLayout(layout.width, layout.bodyHeight, settings);
-  context.save();
-  context.fillStyle = '#f8f9fc';
-  context.fillRect(geometry.carrierX, geometry.carrierY, geometry.carrierWidth, geometry.carrierHeight);
-  context.strokeStyle = '#d6dbe7';
-  context.strokeRect(geometry.qrX + 8, geometry.qrY + 8, geometry.qrSize - 16, geometry.qrSize - 16);
-  context.fillStyle = '#858c9e';
-  context.font = '12px sans-serif';
-  context.textAlign = 'center';
-  context.fillText('下载时生成验证二维码', geometry.qrX + geometry.qrSize / 2, geometry.qrY + geometry.qrSize / 2);
-  context.textAlign = 'left';
-  context.fillText('主体隐写 + 白边纠错凭据', geometry.carrierX, layout.height - 12);
-  context.restore();
-}
-
-async function contentHash(canvas, info) {
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  const image = context.getImageData(0, 0, info.width, info.bodyHeight);
-  // The reserved blue LSB is ignored; every other RGB bit and alpha is bound.
-  for (let i = 2; i < image.data.length; i += 4) image.data[i] &= 254;
-  return hash(image.data);
-}
-
-function descriptor(image, bodyHeight, fullHeight) {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 64;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  context.fillStyle = '#fff';
-  context.fillRect(0, 0, 64, 64);
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
-  context.drawImage(image, 0, 0, width, height * bodyHeight / fullHeight, 0, 0, 64, 64);
-  const rgba = context.getImageData(0, 0, 64, 64).data;
-  const result = new Uint8Array(64);
-  for (let by = 0; by < 8; by++) for (let bx = 0; bx < 8; bx++) {
-    let total = 0;
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-      const p = ((by * 8 + y) * 64 + bx * 8 + x) * 4;
-      total += rgba[p] * 0.299 + rgba[p + 1] * 0.587 + rgba[p + 2] * 0.114;
-    }
-    result[by * 8 + bx] = Math.round(total / 64);
-  }
-  canvas.width = canvas.height = 1;
-  return result;
-}
-
-function hiddenPayload(digest, packet) {
-  const bytes = new Uint8Array(112);
-  bytes.set([90, 74, 83, 49]);
-  bytes.set(digest, 4);
-  bytes.set(fromHex(packet.keyId), 36);
-  new DataView(bytes.buffer).setUint32(44, packet.issuedAt);
-  bytes.set(packet.signature, 48);
-  return bytes;
-}
-
-function drawQr(context, qr, geometry) {
-  context.fillStyle = '#fff';
-  context.fillRect(geometry.qrX, geometry.qrY, geometry.qrSize, geometry.qrSize);
-  context.fillStyle = '#171923';
-  for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) {
-    if (qr.getModule(x, y)) context.fillRect(geometry.qrX + (x + 4) * 3, geometry.qrY + (y + 4) * 3, 3, 3);
-  }
-}
-
-function embedDct(context, geometry, codeword) {
-  const patch = context.createImageData(geometry.carrierWidth, geometry.carrierHeight);
-  for (let p = 0; p < patch.data.length; p += 4) {
-    patch.data[p] = patch.data[p + 1] = patch.data[p + 2] = 235;
-    patch.data[p + 3] = 255;
-  }
-  for (let block = 0; block < 1020; block++) {
-    const blockX = (block % geometry.columns) * 8;
-    const blockY = Math.floor(block / geometry.columns) * 8;
-    const values = BASES.map((_, i) => {
-      const bit = (block * 4 + i) % 2040;
-      return ((codeword[bit >>> 3] >>> (7 - (bit & 7))) & 1) ? 24 : -24;
-    });
-    for (let p = 0; p < 64; p++) {
-      let value = 235;
-      for (let i = 0; i < 4; i++) value += values[i] * BASES[i][p];
-      const offset = ((blockY + Math.floor(p / 8)) * geometry.carrierWidth + blockX + p % 8) * 4;
-      patch.data[offset] = patch.data[offset + 1] = patch.data[offset + 2] = Math.round(value);
-    }
-  }
-  context.putImageData(patch, geometry.carrierX, geometry.carrierY);
-}
-
-function gcd(a, b) { while (b) [a, b] = [b, a % b]; return a; }
-function carrierPositions(info, digest) {
-  const pixels = info.imageWidth * info.imageHeight;
-  let step = 104729 % pixels || 1;
-  while (gcd(step, pixels) !== 1) step++;
-  const start = new DataView(digest.buffer, digest.byteOffset, digest.byteLength).getUint32(0) % pixels;
-  return (i) => (start + i * step) % pixels;
-}
-
-function embedBody(context, info, digest, codeword) {
-  const image = context.getImageData(info.imageX, info.imageY, info.imageWidth, info.imageHeight);
-  const position = carrierPositions(info, digest);
-  for (let i = 0; i < 4080; i++) {
-    const bit = i % 2040;
-    const index = position(i) * 4 + 2;
-    image.data[index] = (image.data[index] & 254) | ((codeword[bit >>> 3] >>> (7 - (bit & 7))) & 1);
-  }
-  context.putImageData(image, info.imageX, info.imageY);
-}
-
-export async function addProof(canvas, layout, settings) {
-  if (layout.imageWidth * layout.imageHeight < 4080) throw new Error('图像过小，无法在主体中容纳验证凭据。');
-  const nonce = crypto.getRandomValues(new Uint8Array(8));
-  const strict = await contentHash(canvas, layout);
-  const visual = descriptor(canvas, layout.bodyHeight, layout.height);
-  const body = serializeBody(layout, settings, strict, visual, nonce);
-  const digest = await hash(body);
-  const result = await fetch('/api/sign', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'omit',
-    cache: 'no-store',
-    body: JSON.stringify({ digest: hex(digest) }),
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!result.ok) throw new Error('本站签名暂不可用，未生成验证照片。可关闭验证后导出普通水印。');
-  const signed = await result.json();
-  if (!VERIFICATION_KEYS.some((key) => key.id === signed.keyId) || !Number.isInteger(signed.issuedAt) || typeof signed.signature !== 'string') throw new Error('本站签名配置不一致，请稍后重试。');
-  const signature = unbase64(signed.signature);
-  if (signature.length !== 64) throw new Error('本站签名格式错误。');
-  const packet = parsePacket(envelope(body, signed.keyId, signed.issuedAt, signature));
-  if (!await verifySignature(packet)) throw new Error('本站返回的签名无效，已停止导出。');
-  const geometry = footerLayout(layout.width, layout.bodyHeight, settings);
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  const codeword = encode(hiddenPayload(digest, packet));
-  drawQr(context, qrFor(packet.bytes), geometry);
-  embedDct(context, geometry, codeword);
-  embedBody(context, layout, digest, codeword);
-  context.fillStyle = '#7f8595';
-  context.font = '11px sans-serif';
-  context.textAlign = 'left';
-  context.fillText('本站签发 · 扫码查看用途并选择图像核对', geometry.carrierX, layout.height - 12);
-  return packet;
-}
-
-export async function verifySignature(packet) {
-  const trusted = VERIFICATION_KEYS.find((key) => key.id === packet.keyId);
-  if (!trusted) return false;
-  const key = await crypto.subtle.importKey('jwk', trusted.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  const digest = hex(await hash(packet.body));
-  const message = encoder.encode('ZJSY-site-proof/v1\n' + packet.keyId + '\n' + packet.issuedAt + '\n' + digest);
-  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, packet.signature, message);
-}
-
-function recoverBody(canvas, info, digest, expected) {
-  if (canvas.width !== info.width || canvas.height !== info.height) return false;
-  const rgba = canvas.getContext('2d', { willReadFrequently: true }).getImageData(info.imageX, info.imageY, info.imageWidth, info.imageHeight).data;
-  const position = carrierPositions(info, digest);
-  for (let copy = 0; copy < 2; copy++) {
-    const codeword = new Uint8Array(255);
-    for (let bit = 0; bit < 2040; bit++) codeword[bit >>> 3] |= (rgba[position(bit + copy * 2040) * 4 + 2] & 1) << (7 - (bit & 7));
-    try { if (equal(decode(codeword), expected)) return true; } catch { /* Try the other independent copy. */ }
-  }
-  return false;
-}
-
-function recoverDct(canvas, info, settings, expected) {
-  const geometry = footerLayout(info.width, info.bodyHeight, settings);
-  const patch = document.createElement('canvas');
-  patch.width = geometry.carrierWidth;
-  patch.height = geometry.carrierHeight;
-  const context = patch.getContext('2d', { willReadFrequently: true });
-  const sx = canvas.width / info.width, sy = canvas.height / info.height;
-  context.drawImage(canvas, geometry.carrierX * sx, geometry.carrierY * sy, geometry.carrierWidth * sx, geometry.carrierHeight * sy, 0, 0, patch.width, patch.height);
-  const rgba = context.getImageData(0, 0, patch.width, patch.height).data;
-  try {
-    for (let copy = 0; copy < 2; copy++) {
-      const codeword = new Uint8Array(255);
-      for (let block = 0; block < 510; block++) {
-        const absolute = block + copy * 510;
-        const x = absolute % geometry.columns * 8, y = Math.floor(absolute / geometry.columns) * 8;
-        for (let frequency = 0; frequency < 4; frequency++) {
-          let coefficient = 0;
-          for (let p = 0; p < 64; p++) {
-            const index = ((y + Math.floor(p / 8)) * patch.width + x + p % 8) * 4;
-            coefficient += (rgba[index] * 0.299 + rgba[index + 1] * 0.587 + rgba[index + 2] * 0.114 - 235) * BASES[frequency][p];
-          }
-          const bit = block * 4 + frequency;
-          if (coefficient > 0) codeword[bit >>> 3] |= 1 << (7 - (bit & 7));
-        }
-      }
-      try { if (equal(decode(codeword), expected)) return true; } catch { /* Try the other copy. */ }
-    }
-    return false;
-  } finally { patch.width = patch.height = 1; }
-}
-
-export async function verifyImage(canvas, packet) {
-  if (!await verifySignature(packet)) return { state: 'invalid', reason: '签名不属于本站，或验证信息已被修改。' };
-  const info = packet.info;
-  const ratioDifference = Math.abs(canvas.width / canvas.height / (info.width / info.height) - 1);
-  if (ratioDifference > 0.015) return { state: 'invalid', reason: '图像比例不匹配，可能发生了裁剪或拼接。' };
-  const digest = await hash(packet.body);
-  const expected = hiddenPayload(digest, packet);
-  const bodyCarrier = recoverBody(canvas, info, digest, expected);
-  const borderCarrier = recoverDct(canvas, info, info, expected);
-  if (!bodyCarrier && !borderCarrier) return { state: 'unreadable', reason: '本站签名有效，但主体与白边的隐写凭据无法恢复，不能完成图像核对。' };
-  if (canvas.width === info.width && canvas.height === info.height && equal(await contentHash(canvas, info), info.strict)) {
-    return { state: 'exact', bodyCarrier, borderCarrier, reason: '本站签名与图像内容校验一致。主体、可见水印及白边声明均已绑定，隐写占用的蓝色最低位除外。' };
-  }
-  const current = descriptor(canvas, info.bodyHeight, info.height);
-  const differences = Array.from(current, (n, i) => Math.abs(n - info.descriptor[i]));
-  const average = differences.reduce((a, b) => a + b, 0) / 64;
-  if (average <= 6 && Math.max(...differences) <= 24) return { state: 'similar', bodyCarrier, borderCarrier, reason: '本站签名有效，图像内容近似，可能经历了压缩或缩放。近似匹配不能证明细节未被修改。', difference: average };
-  return { state: 'invalid', bodyCarrier, borderCarrier, reason: '本站签名存在，但图像内容不匹配；主体可能被替换或修改。' };
+function samePacket(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 export async function readQr(canvas) {
   await import('./vendor/jsqr.js');
-  // Prioritize the added bottom-right QR, avoiding an original document's QR.
-  for (const [left, top, width, height] of [[0.4, 0.5, 0.6, 0.5], [0, 0.5, 1, 0.5], [0, 0, 1, 1]]) {
+  for (const [left, top, width, height] of [[0.2, 0.55, 0.6, 0.45], [0, 0.5, 1, 0.5], [0, 0, 1, 1]]) {
     const scan = document.createElement('canvas');
     const factor = Math.min(1, 2200 / canvas.width);
     scan.width = Math.round(canvas.width * width * factor);
@@ -344,5 +296,7 @@ export async function readQr(canvas) {
       try { return packetFromUrl(qr.data); } catch { /* Ignore unrelated document QR codes. */ }
     }
   }
-  throw new Error('未读到本站验证二维码。请使用完整图像，或扫描二维码进入验证页后再选择照片。');
+  throw new Error('未读到新的本站验证二维码，请使用包含白边和二维码的完整图像。');
 }
+
+export { samePacket };

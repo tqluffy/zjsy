@@ -4,15 +4,17 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 let revision = 'development';
+let dirtyWorkingTree = false;
 try {
   revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  dirtyWorkingTree = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
 } catch { /* An uncommitted local preview has no source revision yet. */ }
 const ciRevision = process.env.WORKERS_CI_COMMIT_SHA;
 if (ciRevision) {
   if (!/^[0-9a-f]{40}$/i.test(ciRevision)) throw new Error('Invalid Workers Builds commit SHA.');
   if (revision !== 'development' && revision !== ciRevision) throw new Error('Workers Builds commit SHA does not match the checkout.');
   revision = ciRevision;
-}
+} else if (dirtyWorkingTree) revision = 'development';
 if (process.env.WORKERS_CI && revision === 'development') throw new Error('Production builds require a source commit SHA.');
 await rm(new URL('../dist/', import.meta.url), { recursive: true, force: true });
 await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
@@ -33,7 +35,9 @@ async function stampHtml(directory) {
     if (entry.isDirectory()) await stampHtml(path);
     else if (entry.name.endsWith('.html')) {
       const html = await readFile(path, 'utf8');
-      await writeFile(path, html.replaceAll('__BUILD_REVISION__', revision).replaceAll('__BUILD_SHORT__', revision.slice(0, 7)));
+      const buildUrl = revision === 'development' ? 'https://github.com/tqluffy/zjsy' : `https://github.com/tqluffy/zjsy/tree/${revision}`;
+      const buildLabel = revision === 'development' ? '工作区构建' : `开源版本 ${revision.slice(0, 7)}`;
+      await writeFile(path, html.replaceAll('__BUILD_URL__', buildUrl).replaceAll('__BUILD_LABEL__', buildLabel));
     }
   }
 }
